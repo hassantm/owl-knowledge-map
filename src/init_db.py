@@ -57,7 +57,9 @@ def init_database():
             slide_number    INTEGER,
             is_introduction INTEGER NOT NULL,
             term_in_context TEXT,
-            source_path     TEXT
+            source_path     TEXT,
+            needs_review    INTEGER DEFAULT 0,  -- 2026-02-22: Added for review workflow (0=no, 1=needs review, 2=approved, 3=rejected)
+            review_reason   TEXT                -- 2026-02-22: Why flagged: 'short_term', 'potential_heading', 'url', 'citation', etc.
         )
     """)
 

@@ -146,16 +146,18 @@ def insert_occurrence(cursor: sqlite3.Cursor, concept_id: int, metadata: dict,
         cursor: SQLite cursor
         concept_id: Foreign key to concepts table
         metadata: File metadata (subject, year, term, unit, source_path)
-        term_data: Extracted term data (slide, chapter, context, flagged)
+        term_data: Extracted term data (slide, chapter, context, flagged, review_reason)
 
     Returns:
         occurrence_id (int)
     """
+    # 2026-02-22: Added needs_review and review_reason columns
     cursor.execute("""
         INSERT INTO occurrences (
             concept_id, subject, year, term, unit, chapter,
-            slide_number, is_introduction, term_in_context, source_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            slide_number, is_introduction, term_in_context, source_path,
+            needs_review, review_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         concept_id,
         metadata['subject'],
@@ -166,7 +168,9 @@ def insert_occurrence(cursor: sqlite3.Cursor, concept_id: int, metadata: dict,
         term_data['slide'],
         True,  # All bold terms in Stage 2 are introductions
         term_data['context'],
-        metadata['source_path']
+        metadata['source_path'],
+        1 if term_data['flagged'] else 0,
+        term_data.get('review_reason', None)
     ))
     return cursor.lastrowid
 
@@ -233,7 +237,7 @@ def export_to_csv(csv_path: str, metadata: dict, extraction_results: dict) -> bo
     Export extraction results to CSV for human review.
 
     CSV columns:
-    - term, slide, chapter, context, flagged, subject, year, term, unit
+    - term, slide, chapter, context, flagged, review_reason, subject, year, term, unit
 
     Args:
         csv_path: Output CSV file path
@@ -245,8 +249,9 @@ def export_to_csv(csv_path: str, metadata: dict, extraction_results: dict) -> bo
     """
     try:
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            # 2026-02-22: Added review_reason column
             writer = csv.DictWriter(f, fieldnames=[
-                'term', 'slide', 'chapter', 'context', 'flagged',
+                'term', 'slide', 'chapter', 'context', 'flagged', 'review_reason',
                 'subject', 'year', 'term_period', 'unit'
             ])
             writer.writeheader()
@@ -258,6 +263,7 @@ def export_to_csv(csv_path: str, metadata: dict, extraction_results: dict) -> bo
                     'chapter': term_data['chapter'] or '',
                     'context': term_data['context'],
                     'flagged': 'YES' if term_data['flagged'] else 'NO',
+                    'review_reason': term_data.get('review_reason', ''),
                     'subject': metadata['subject'],
                     'year': metadata['year'],
                     'term_period': metadata['term'],

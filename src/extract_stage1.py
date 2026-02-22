@@ -17,6 +17,25 @@ from pptx import Presentation
 
 
 # =============================================================================
+# NOISE TERMS DICTIONARY
+# =============================================================================
+
+# 2026-02-22: Noise terms dictionary - slide labels and structural text
+NOISE_TERMS = {
+    # Slide structural labels
+    'reason 1', 'reason 2', 'reason 3', 'reason 4', 'reason 5',
+    'source 1', 'source 2', 'source 3', 'source 4', 'source 5',
+    'example 1', 'example 2', 'example 3',
+    'task 1', 'task 2', 'task 3',
+
+    # Generic headings (only when standalone)
+    'the', 'a', 'an',
+
+    # Add more patterns as discovered during corpus processing
+}
+
+
+# =============================================================================
 # LAYER 1: FILTERING & CLEANING
 # =============================================================================
 
@@ -27,6 +46,9 @@ def is_noise(text: str) -> bool:
     Filters:
     - "Page N" patterns (table of contents artifacts)
     - Pure numeric runs like "456" or "17." (line numbers from reading scaffolds)
+    - URLs (http://, https://, www.)
+    - Common citation patterns (Group, Inc, Ltd, LLC, Corp, Organization, Foundation)
+    - Noise terms from dictionary (Reason 1, Source 1, etc.)
 
     Args:
         text: Raw text from a bold run
@@ -42,6 +64,21 @@ def is_noise(text: str) -> bool:
 
     # Filter pure numeric runs (with optional trailing period)
     if re.match(r'^\d+\.?$', text):
+        return True
+
+    # 2026-02-22: Filter URLs
+    if re.match(r'https?://', text, re.IGNORECASE):
+        return True
+    if re.match(r'www\.', text, re.IGNORECASE):
+        return True
+
+    # 2026-02-22: Filter common citation patterns
+    if re.match(r'.+(Group|Inc|Ltd|LLC|Corp|Organization|Foundation)\.?$', text):
+        return True
+
+    # 2026-02-22: Filter noise terms from dictionary (clean first to handle trailing punctuation)
+    cleaned = text.rstrip('.,;:!?')
+    if cleaned.lower() in NOISE_TERMS:
         return True
 
     return False
@@ -63,20 +100,40 @@ def clean_term(text: str) -> str:
     return text.strip().rstrip('.,;:!?')
 
 
-def is_short_term(text: str) -> bool:
+def flag_for_review(text: str, context: str) -> tuple[bool, str]:
     """
-    Flag terms shorter than 5 characters for human review.
+    Determine if term needs human review and why.
 
-    Short terms like "died", "halo", "Huns" may be valid concepts but warrant
-    review to ensure they're not artifacts.
+    2026-02-22: Enhanced flagging with specific reasons
 
     Args:
         text: Cleaned term text
+        context: Full paragraph text surrounding the term
 
     Returns:
-        True if term should be flagged for review
+        (needs_review: bool, reason: str)
     """
-    return len(text) < 5
+    reasons = []
+
+    # Short terms
+    if len(text) < 5:
+        reasons.append('short_term')
+
+    # Very short context suggests heading-only
+    if len(context) < 20:
+        reasons.append('potential_heading')
+
+    # Single word in all caps (except valid proper nouns)
+    if text.isupper() and ' ' not in text and len(text) > 1:
+        reasons.append('all_caps')
+
+    # Ends with colon (likely a heading)
+    if text.endswith(':'):
+        reasons.append('heading_marker')
+
+    if reasons:
+        return True, ', '.join(reasons)
+    return False, None
 
 
 def detect_chapter(text: str) -> str:
@@ -129,6 +186,7 @@ def extract_bold_runs(pptx_path: str) -> dict:
     }
 
     current_chapter = None
+    in_credits_section = False  # 2026-02-22: Track Picture Credits section
 
     try:
         prs = Presentation(pptx_path)
@@ -143,6 +201,14 @@ def extract_bold_runs(pptx_path: str) -> dict:
                 for paragraph in shape.text_frame.paragraphs:
                     # Get full paragraph text for context and chapter detection
                     para_text = paragraph.text.strip()
+
+                    # 2026-02-22: Check if we've entered Picture Credits section
+                    if 'picture credit' in para_text.lower():
+                        in_credits_section = True
+
+                    # Skip all bold terms if in credits section
+                    if in_credits_section:
+                        continue
 
                     # Check for chapter heading (scans ALL text, not just bold)
                     chapter_heading = detect_chapter(para_text)
@@ -165,9 +231,9 @@ def extract_bold_runs(pptx_path: str) -> dict:
                         if is_noise(run_text):
                             continue
 
-                        # Clean and flag
+                        # 2026-02-22: Clean and flag with enhanced review logic
                         cleaned = clean_term(run_text)
-                        flagged = is_short_term(cleaned)
+                        needs_review, review_reason = flag_for_review(cleaned, para_text)
 
                         # Store extracted term with metadata
                         results['terms'].append({
@@ -175,7 +241,8 @@ def extract_bold_runs(pptx_path: str) -> dict:
                             'slide': slide_num,
                             'chapter': current_chapter,
                             'context': para_text,
-                            'flagged': flagged
+                            'flagged': needs_review,
+                            'review_reason': review_reason
                         })
 
     except Exception as e:
@@ -238,8 +305,8 @@ def format_output(results: dict, filename: str) -> None:
             chapter_display = f" | {chapter}" if chapter else ""
             print(f"\nSlide {slide_num}{chapter_display}")
 
-        # Print term with flag if applicable
-        flag_marker = "[FLAGGED: SHORT] " if flagged else ""
+        # 2026-02-22: Print term with flag and reason if applicable
+        flag_marker = f"[FLAGGED: {term_data.get('review_reason', 'SHORT')}] " if flagged else ""
         print(f'  {flag_marker}"{term}"')
 
         # Print context (truncate if very long)
@@ -254,7 +321,8 @@ def format_output(results: dict, filename: str) -> None:
         for i, term_data in enumerate(flagged_terms, start=1):
             term = term_data['term']
             slide = term_data['slide']
-            print(f'{i}. "{term}" ({len(term)} chars) - Slide {slide}')
+            reason = term_data.get('review_reason', 'unknown')
+            print(f'{i}. "{term}" ({len(term)} chars) - Slide {slide} - Reason: {reason}')
 
 
 def main():
