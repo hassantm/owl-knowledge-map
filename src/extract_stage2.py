@@ -30,8 +30,10 @@ def parse_filename_metadata(filepath: str) -> dict:
     """
     Extract curriculum metadata from file path.
 
+    2026-02-23: Enhanced to handle both corpus and sample file patterns
+
     Handles two path patterns:
-    1. Full corpus: /{Subject}/{Year} {Subject} {Term} {Unit}/Booklet/filename.pptx
+    1. Full corpus: .../Y4 Hist Autumn 1 The Roman Republic/Y4 Autumn 1 The Roman Republic Booklet/file.pptx
     2. Sample files: /data/sample/Y{Year} {Term} {Unit} Booklet.pptx
 
     Args:
@@ -43,7 +45,38 @@ def parse_filename_metadata(filepath: str) -> dict:
     path = Path(filepath)
     filename = path.stem  # Filename without extension
 
-    # Try to parse from filename (sample file pattern)
+    # Pattern 1 - Full corpus structure
+    # Path structure: .../Y4 Hist Autumn 1 The Roman Republic/Y4 Autumn 1 The Roman Republic Booklet/file.pptx
+    # Parse from the unit folder (parent.parent)
+    unit_folder = path.parent.parent.name  # e.g., "Y4 Hist Autumn 1 The Roman Republic"
+
+    corpus_match = re.match(
+        r'Y(\d+)\s+(Hist|Geog|Relig)\s+(\w+)\s+(\d+)\s+(.+)$',
+        unit_folder
+    )
+
+    if corpus_match:
+        year = int(corpus_match.group(1))
+        subject_abbr = corpus_match.group(2)
+        term_part1 = corpus_match.group(3)  # "Autumn", "Spring", "Summer"
+        term_part2 = corpus_match.group(4)  # "1" or "2"
+        unit = corpus_match.group(5)        # "The Roman Republic"
+
+        # Expand abbreviation
+        subject = expand_subject_abbreviation(subject_abbr)
+
+        # Build term: "Autumn 1" → "Autumn1"
+        term = f"{term_part1}{term_part2}"
+
+        return {
+            'subject': subject,
+            'year': year,
+            'term': term,
+            'unit': unit,
+            'source_path': str(path.absolute())
+        }
+
+    # Pattern 2 - Fall back to filename parsing (sample file pattern)
     # Pattern: Y4 Spring 2 Christianity in 3 empires Booklet
     match = re.match(r'Y(\d+)\s+(\w+\s+\d+)\s+(.+?)\s+Booklet', filename)
 
@@ -56,8 +89,6 @@ def parse_filename_metadata(filepath: str) -> dict:
         term = term_raw.replace(' ', '')
 
         # Infer subject from unit name or filename
-        # For now, default to History since sample is a history unit
-        # TODO: Add logic to detect subject from parent folder in full corpus
         subject = infer_subject(filename, str(path.parent))
 
         return {
@@ -76,6 +107,26 @@ def parse_filename_metadata(filepath: str) -> dict:
         'unit': None,
         'source_path': str(path.absolute())
     }
+
+
+def expand_subject_abbreviation(abbr: str) -> str:
+    """
+    Expand subject abbreviations from folder names.
+
+    2026-02-23: Added for corpus structure parsing
+
+    Args:
+        abbr: Short form (Hist, Geog, Relig)
+
+    Returns:
+        Full subject name
+    """
+    mapping = {
+        'Hist': 'History',
+        'Geog': 'Geography',
+        'Relig': 'Religion'
+    }
+    return mapping.get(abbr, abbr)
 
 
 def infer_subject(filename: str, parent_path: str) -> str:
