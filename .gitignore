@@ -40,6 +40,9 @@ Thumbs.db
 test_output/
 temp/
 
+# Generated CSV exports
+output/*.csv
+
 # Data files (PPTX booklets are too large for git)
 data/sample/*.pptx
 data/full_corpus/*.pptx
