@@ -21,6 +21,14 @@ from datetime import datetime
 # Import Stage 1 extraction functions
 from extract_stage1 import extract_bold_runs
 
+# Import vocab validator (optional — gracefully absent if python-docx not installed)
+# 2026-02-24: Added vocab validation integration
+try:
+    from vocab_validator import find_vocab_list, validate_extraction
+    VOCAB_VALIDATION_AVAILABLE = True
+except ImportError:
+    VOCAB_VALIDATION_AVAILABLE = False
+
 
 # =============================================================================
 # METADATA PARSING
@@ -201,22 +209,26 @@ def insert_occurrence(cursor: sqlite3.Cursor, concept_id: int, metadata: dict,
     """
     Insert an occurrence record.
 
+    2026-02-22: Added needs_review and review_reason columns
+    2026-02-24: Added validation_status, vocab_confidence, vocab_match_type, vocab_source
+
     Args:
         cursor: SQLite cursor
         concept_id: Foreign key to concepts table
         metadata: File metadata (subject, year, term, unit, source_path)
-        term_data: Extracted term data (slide, chapter, context, flagged, review_reason)
+        term_data: Extracted term data (slide, chapter, context, flagged, review_reason,
+                   and optional validation fields)
 
     Returns:
         occurrence_id (int)
     """
-    # 2026-02-22: Added needs_review and review_reason columns
     cursor.execute("""
         INSERT INTO occurrences (
             concept_id, subject, year, term, unit, chapter,
             slide_number, is_introduction, term_in_context, source_path,
-            needs_review, review_reason
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            needs_review, review_reason,
+            validation_status, vocab_confidence, vocab_match_type, vocab_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         concept_id,
         metadata['subject'],
@@ -229,7 +241,11 @@ def insert_occurrence(cursor: sqlite3.Cursor, concept_id: int, metadata: dict,
         term_data['context'],
         metadata['source_path'],
         1 if term_data['flagged'] else 0,
-        term_data.get('review_reason', None)
+        term_data.get('review_reason', None),
+        term_data.get('validation_status', None),
+        term_data.get('vocab_confidence', None),
+        term_data.get('vocab_match_type', None),
+        term_data.get('vocab_source', None)
     ))
     return cursor.lastrowid
 
@@ -309,9 +325,11 @@ def export_to_csv(csv_path: str, metadata: dict, extraction_results: dict) -> bo
     try:
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
             # 2026-02-22: Added review_reason column
+            # 2026-02-24: Added validation columns
             writer = csv.DictWriter(f, fieldnames=[
                 'term', 'slide', 'chapter', 'context', 'flagged', 'review_reason',
-                'subject', 'year', 'term_period', 'unit'
+                'subject', 'year', 'term_period', 'unit',
+                'validation_status', 'vocab_confidence', 'vocab_match_type'
             ])
             writer.writeheader()
 
@@ -326,7 +344,10 @@ def export_to_csv(csv_path: str, metadata: dict, extraction_results: dict) -> bo
                     'subject': metadata['subject'],
                     'year': metadata['year'],
                     'term_period': metadata['term'],
-                    'unit': metadata['unit']
+                    'unit': metadata['unit'],
+                    'validation_status': term_data.get('validation_status', ''),
+                    'vocab_confidence': term_data.get('vocab_confidence', ''),
+                    'vocab_match_type': term_data.get('vocab_match_type', '')
                 })
 
         return True
@@ -379,6 +400,25 @@ def process_file(pptx_path: str, db_path: str, csv_output_dir: str = None) -> di
 
         if extraction['errors']:
             results['errors'].extend(extraction['errors'])
+
+        # Step 2.5: Vocab validation (2026-02-24)
+        if VOCAB_VALIDATION_AVAILABLE:
+            vocab_path = find_vocab_list(pptx_path)
+            if vocab_path:
+                print(f"Validating against vocab list...")
+                try:
+                    extraction = validate_extraction(extraction, vocab_path)
+                    vstats = extraction.get('validation_stats', {})
+                    results['validation_stats'] = vstats
+                    print(f"  Vocab: {vstats.get('vocab_list', '?')} "
+                          f"({vstats.get('vocab_terms_total', 0)} terms)")
+                    print(f"  Confirmed: {vstats.get('extracted_confirmed', 0)}  "
+                          f"Potential noise: {vstats.get('extracted_noise', 0)}  "
+                          f"Missed: {len(vstats.get('missed_terms', []))}")
+                except Exception as e:
+                    print(f"  Vocab validation failed: {e}")
+            else:
+                print(f"  No vocab list found — skipping validation")
 
         # Step 3: Write to database
         print(f"Writing to database: {db_path}")

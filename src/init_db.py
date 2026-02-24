@@ -58,8 +58,12 @@ def init_database():
             is_introduction INTEGER NOT NULL,
             term_in_context TEXT,
             source_path     TEXT,
-            needs_review    INTEGER DEFAULT 0,  -- 2026-02-22: Added for review workflow (0=no, 1=needs review, 2=approved, 3=rejected)
-            review_reason   TEXT                -- 2026-02-22: Why flagged: 'short_term', 'potential_heading', 'url', 'citation', etc.
+            needs_review        INTEGER DEFAULT 0,  -- 2026-02-22: Added for review workflow (0=no, 1=needs review, 2=approved, 3=rejected)
+            review_reason       TEXT,               -- 2026-02-22: Why flagged: 'short_term', 'potential_heading', 'url', 'citation', etc.
+            validation_status   TEXT,               -- 2026-02-24: 'confirmed', 'confirmed_with_flag', 'potential_noise', 'high_priority_review', NULL
+            vocab_confidence    REAL,               -- 2026-02-24: 0.0–1.0, NULL if no vocab available
+            vocab_match_type    TEXT,               -- 2026-02-24: 'exact', 'normalised', 'fuzzy', 'none', NULL
+            vocab_source        TEXT                -- 2026-02-24: Filename of vocab .docx used, NULL if no validation
         )
     """)
 
