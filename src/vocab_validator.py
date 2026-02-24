@@ -40,29 +40,33 @@ def find_vocab_list(pptx_path: str) -> str | None:
     """
     unit_folder = Path(pptx_path).parent.parent
 
-    vocab_docx_files = []
+    # 2026-02-24: Two passes — prefer chapter-ordered, fall back to A-Z
+    az_files = []
+    chapter_files = []
 
     for child in unit_folder.iterdir():
         if not child.is_dir():
             continue
         if 'vocab' not in child.name.lower():
             continue
-        # Recurse into vocab folder for .docx files
         for docx_file in child.rglob('*.docx'):
-            # Skip A-Z alphabetical variants
-            name_lower = docx_file.name.lower()
-            if name_lower.startswith('a-z') or ' a-z' in name_lower or '_a-z' in name_lower:
-                continue
-            # Skip macOS temp files
             if docx_file.name.startswith('.') or docx_file.name.startswith('~$'):
                 continue
-            vocab_docx_files.append(docx_file)
+            name_lower = docx_file.name.lower()
+            # 2026-02-24: Only accept files with 'vocab' in the filename
+            # (filters out stray commercial/admin docs in vocab folders)
+            if 'vocab' not in name_lower:
+                continue
+            if name_lower.startswith('a-z') or ' a-z' in name_lower or '_a-z' in name_lower:
+                az_files.append(docx_file)
+            else:
+                chapter_files.append(docx_file)
 
-    if not vocab_docx_files:
+    candidates = chapter_files if chapter_files else az_files
+    if not candidates:
         return None
 
-    # Return most recently modified (i.e. latest version)
-    return str(max(vocab_docx_files, key=lambda f: f.stat().st_mtime))
+    return str(max(candidates, key=lambda f: f.stat().st_mtime))
 
 
 # =============================================================================

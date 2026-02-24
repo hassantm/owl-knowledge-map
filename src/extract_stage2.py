@@ -149,6 +149,11 @@ def infer_subject(filename: str, parent_path: str) -> str:
     """
     Infer subject from filename or parent folder.
 
+    2026-02-24: Fixed substring match bug. "Buddhist" contains "hist" as a
+    substring, causing Buddhist units to be misclassified as History.
+    Now checks the top-level HEP subject folder first (reliable for corpus
+    files), then falls back to non-alpha-bounded abbreviation matching.
+
     Args:
         filename: PPTX filename
         parent_path: Parent directory path
@@ -156,17 +161,25 @@ def infer_subject(filename: str, parent_path: str) -> str:
     Returns:
         Subject name: 'History', 'Geography', or 'Religion'
     """
-    # Check for subject abbreviations in filename or path
-    text = f"{filename} {parent_path}".lower()
+    path_lower = parent_path.lower()
 
-    if 'hist' in text:
+    # Primary: top-level subject folder name — always present for corpus files
+    if 'hep history' in path_lower:
         return 'History'
-    elif 'geog' in text:
+    elif 'hep geography' in path_lower:
         return 'Geography'
-    elif 'relig' in text:
+    elif 'hep religion' in path_lower:
         return 'Religion'
 
-    # Default to History for sample file
+    # Fallback: abbreviation as standalone token (non-alpha boundaries)
+    text = f"{filename} {path_lower}"
+    if re.search(r'(?<![a-z])hist(?![a-z])', text):
+        return 'History'
+    elif re.search(r'(?<![a-z])geog(?![a-z])', text):
+        return 'Geography'
+    elif re.search(r'(?<![a-z])relig(?![a-z])', text):
+        return 'Religion'
+
     return 'History'
 
 
