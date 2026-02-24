@@ -50,8 +50,9 @@ def parse_filename_metadata(filepath: str) -> dict:
     # Parse from the unit folder (parent.parent)
     unit_folder = path.parent.parent.name  # e.g., "Y4 Hist Autumn 1 The Roman Republic"
 
+    # 2026-02-24: Extended to handle "Year N" prefix in folder names
     corpus_match = re.match(
-        r'Y(\d+)\s+(Hist|Geog|Relig)\s+(\w+)\s+(\d+)\s+(.+)$',
+        r'(?:Year\s+)?Y?(\d+)\s+(Hist|Geog|Relig)\s+(\w+)\s+(\d+)\s+(.+)$',
         unit_folder
     )
 
@@ -77,16 +78,23 @@ def parse_filename_metadata(filepath: str) -> dict:
         }
 
     # Pattern 2 - Fall back to filename parsing (sample file pattern)
-    # Pattern: Y4 Spring 2 Christianity in 3 empires Booklet
-    match = re.match(r'Y(\d+)\s+(\w+\s+\d+)\s+(.+?)\s+Booklet', filename)
+    # 2026-02-24: Extended to handle "Year N" prefix, lowercase "booklet",
+    #             "FINAL" suffix, and filenames with no "Booklet" at all.
+    # Strip known trailing suffixes before matching
+    clean_stem = re.sub(r'(\s+(?:Booklet|FINAL))+\s*$', '', filename, flags=re.IGNORECASE).strip()
+    match = re.match(
+        r'(?:Year\s+)?Y?(\d+)\s+((?:Autumn|Spring|Summer)\s+\d+)\s+(.+)$',
+        clean_stem,
+        re.IGNORECASE
+    )
 
     if match:
         year = int(match.group(1))
         term_raw = match.group(2)  # e.g., "Spring 2"
         unit = match.group(3)      # e.g., "Christianity in 3 empires"
 
-        # Normalize term format: "Spring 2" → "Spring2"
-        term = term_raw.replace(' ', '')
+        # Normalize term format: "Spring 2" → "Spring2", title-case for safety
+        term = term_raw.title().replace(' ', '')
 
         # Infer subject from unit name or filename
         subject = infer_subject(filename, str(path.parent))
