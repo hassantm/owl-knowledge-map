@@ -63,7 +63,9 @@ def init_database():
             validation_status   TEXT,               -- 2026-02-24: 'confirmed', 'confirmed_with_flag', 'potential_noise', 'high_priority_review', NULL
             vocab_confidence    REAL,               -- 2026-02-24: 0.0–1.0, NULL if no vocab available
             vocab_match_type    TEXT,               -- 2026-02-24: 'exact', 'normalised', 'fuzzy', 'none', NULL
-            vocab_source        TEXT                -- 2026-02-24: Filename of vocab .docx used, NULL if no validation
+            vocab_source        TEXT,               -- 2026-02-24: Filename of vocab .docx used, NULL if no validation
+            audit_decision      TEXT,               -- 2026-02-26: 'keep', 'delete', 'add', 'skip', NULL=unreviewed (Anvil UI)
+            audit_notes         TEXT                -- 2026-02-26: Optional reviewer notes from Anvil UI
         )
     """)
 
