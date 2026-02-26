@@ -639,6 +639,199 @@ def get_concept_detail(concept_id: int) -> dict | None:
     return {'concept': concept, 'occurrences': occurrences, 'edges': edges}
 
 
+@anvil.server.callable
+def get_load_bearing_concepts(min_occurrences: int = 2) -> list[dict]:
+    """
+    Return concepts with min_occurrences or more, sorted by occurrence count.
+
+    These are the entry points for the edge confirmation workflow.
+    Each row includes: concept_id, term, subject_area, occ_count,
+    subjects (comma-separated), first_year, last_year.
+
+    Created: 2026-02-26
+    """
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT c.concept_id, c.term, c.subject_area,
+                   COUNT(*) AS occ_count,
+                   GROUP_CONCAT(DISTINCT o.subject)  AS subjects,
+                   MIN(o.year) AS first_year,
+                   MAX(o.year) AS last_year
+            FROM concepts c
+            JOIN occurrences o ON c.concept_id = o.concept_id
+            WHERE o.validation_status = 'confirmed'
+            GROUP BY c.concept_id
+            HAVING COUNT(*) >= ?
+            ORDER BY occ_count DESC, c.term
+        """, (min_occurrences,))
+        rows = [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    log.info(
+        "get_load_bearing_concepts: %d concepts with >= %d occurrences",
+        len(rows), min_occurrences
+    )
+    return rows
+
+
+@anvil.server.callable
+def get_candidate_edges_list(
+    subject: str = None,
+    edge_type: str = None,
+    include_confirmed: bool = False,
+    page: int = 0,
+    page_size: int = 50
+) -> dict:
+    """
+    Return paginated candidate edges for the edge confirmation review workflow.
+
+    Filters:
+      subject          — match on either from_subject or to_subject
+      edge_type        — 'within_subject' or 'cross_subject'
+      include_confirmed — if True, include already-confirmed pairs
+
+    Imports graph_builder on first call (adds ~50 ms once).
+
+    Returns dict: rows, total, page, page_size.
+
+    Created: 2026-02-26
+    """
+    import sys
+    from pathlib import Path as _Path
+    sys.path.insert(0, str(_Path(__file__).parent))
+    from graph_builder import get_candidate_edges
+
+    candidates = get_candidate_edges(DB_PATH)
+
+    if not include_confirmed:
+        candidates = [c for c in candidates if not c['already_confirmed']]
+    if subject:
+        candidates = [
+            c for c in candidates
+            if c['from_subject'] == subject or c['to_subject'] == subject
+        ]
+    if edge_type:
+        candidates = [c for c in candidates if c['edge_type'] == edge_type]
+
+    total = len(candidates)
+    paged = candidates[page * page_size: (page + 1) * page_size]
+
+    log.info(
+        "get_candidate_edges_list: %d/%d (page %d)", len(paged), total, page
+    )
+    return {'rows': paged, 'total': total, 'page': page, 'page_size': page_size}
+
+
+@anvil.server.callable
+def confirm_edge(
+    from_occurrence_id: int,
+    to_occurrence_id: int,
+    edge_nature: str,
+    confirmed_by: str,
+    edge_type: str = None,
+) -> dict:
+    """
+    Write a confirmed edge to the edges table.
+
+    edge_nature: 'reinforcement' | 'extension' | 'cross_subject_application'
+    confirmed_by: reviewer's name (required)
+    edge_type: auto-detected from subject match if not supplied
+
+    Idempotent — updates existing edge if the pair already exists.
+
+    Returns dict: {'ok': bool, 'edge_id': int|None, 'message': str}
+
+    Created: 2026-02-26
+    """
+    from datetime import date
+
+    valid_natures = {'reinforcement', 'extension', 'cross_subject_application'}
+    if edge_nature not in valid_natures:
+        return {
+            'ok': False,
+            'message': (
+                f"Invalid edge_nature '{edge_nature}'. "
+                f"Use: reinforcement, extension, cross_subject_application"
+            ),
+        }
+    if not confirmed_by or not confirmed_by.strip():
+        return {'ok': False, 'message': "confirmed_by must not be empty."}
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.cursor()
+
+        # Validate occurrences exist and get their subjects
+        cursor.execute(
+            "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = ?",
+            (from_occurrence_id,)
+        )
+        fr_row = cursor.fetchone()
+        cursor.execute(
+            "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = ?",
+            (to_occurrence_id,)
+        )
+        to_row = cursor.fetchone()
+
+        if not fr_row:
+            return {'ok': False, 'message': f"from_occurrence_id {from_occurrence_id} not found."}
+        if not to_row:
+            return {'ok': False, 'message': f"to_occurrence_id {to_occurrence_id} not found."}
+
+        if not edge_type:
+            edge_type = (
+                'within_subject' if fr_row[1] == to_row[1] else 'cross_subject'
+            )
+
+        today = date.today().isoformat()
+
+        # Idempotent upsert
+        cursor.execute(
+            "SELECT edge_id FROM edges WHERE from_occurrence=? AND to_occurrence=?",
+            (from_occurrence_id, to_occurrence_id)
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute("""
+                UPDATE edges
+                SET edge_type=?, edge_nature=?, confirmed_by=?, confirmed_date=?
+                WHERE edge_id=?
+            """, (edge_type, edge_nature, confirmed_by.strip(), today, existing[0]))
+            edge_id = existing[0]
+            action = 'updated'
+        else:
+            cursor.execute("""
+                INSERT INTO edges (
+                    from_occurrence, to_occurrence,
+                    edge_type, edge_nature, confirmed_by, confirmed_date
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                from_occurrence_id, to_occurrence_id,
+                edge_type, edge_nature, confirmed_by.strip(), today
+            ))
+            edge_id = cursor.lastrowid
+            action = 'inserted'
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    log.info(
+        "confirm_edge: %s edge_id=%d %d→%d nature=%s by=%s",
+        action, edge_id, from_occurrence_id, to_occurrence_id,
+        edge_nature, confirmed_by,
+    )
+    return {
+        'ok': True,
+        'edge_id': edge_id,
+        'message': f"Edge {action} (id={edge_id}): {edge_nature} [{edge_type}]",
+    }
+
+
 # =============================================================================
 # PHASE C — PAGE VIEW (stub; build when render_pages.py has run)
 # =============================================================================
