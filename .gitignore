@@ -40,9 +40,15 @@ Thumbs.db
 test_output/
 temp/
 
-# Generated CSV exports
-output/*.csv
+# Generated CSV exports (all output files)
+output/
 
-# Data files (PPTX booklets are too large for git)
-data/sample/*.pptx
-data/full_corpus/*.pptx
+# Data files — booklets and vocab lists are source material, not code
+data/
+*.pptx
+*.docx
+*.xlsx
+
+# R artefacts
+.Rhistory
+.RData
