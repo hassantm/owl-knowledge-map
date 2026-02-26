@@ -10,15 +10,15 @@ import anvil.server
 
 
 class MainForm(Form):
-    def __init__(self, **properties):
-        self.init_components(**properties)
+    # def __init__(self, **properties):
+    #     self.init_components(**properties)
 
-        if not anvil.users.get_user():
-            anvil.users.login_with_form()
+    #     if not anvil.users.get_user():
+    #         anvil.users.login_with_form()
 
-        user = anvil.users.get_user()
-        if not user:
-            return
+    #     user = anvil.users.get_user()
+    #     if not user:
+    #         return
 
         self._build_nav(user)
         self._content = ColumnPanel()
