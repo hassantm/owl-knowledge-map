@@ -440,6 +440,142 @@ def get_filter_options() -> dict:
 
 
 # =============================================================================
+# PHASE A — CORPUS BROWSER + DASHBOARD STATS
+# (Added 2026-02-26 to support BrowserForm and DashboardForm)
+# =============================================================================
+
+@anvil.server.callable
+def get_dashboard_stats() -> dict:
+    """
+    Return high-level counts for the dashboard stat cards.
+
+    Returns: concepts, occurrences, confirmed_edges, by_subject (dict).
+
+    Created: 2026-02-26
+    """
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM concepts")
+        concepts = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM occurrences WHERE validation_status = 'confirmed'"
+        )
+        occurrences = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM edges WHERE confirmed_by IS NOT NULL"
+        )
+        confirmed_edges = cursor.fetchone()[0]
+
+        cursor.execute("""
+            SELECT subject, COUNT(*) AS cnt
+            FROM occurrences
+            WHERE validation_status = 'confirmed'
+            GROUP BY subject
+            ORDER BY subject
+        """)
+        by_subject = {r[0]: r[1] for r in cursor.fetchall()}
+
+    finally:
+        conn.close()
+
+    log.info(
+        "get_dashboard_stats: concepts=%d occurrences=%d confirmed_edges=%d",
+        concepts, occurrences, confirmed_edges
+    )
+    return {
+        'concepts': concepts,
+        'occurrences': occurrences,
+        'confirmed_edges': confirmed_edges,
+        'by_subject': by_subject,
+    }
+
+
+@anvil.server.callable
+def get_corpus(
+    subject: str = None,
+    year: int = None,
+    term: str = None,
+    search: str = None,
+    page: int = 0,
+    page_size: int = 50
+) -> dict:
+    """
+    Return a paginated list of all confirmed occurrences for the corpus browser.
+
+    Filters: subject, year, term (curriculum period), search (term LIKE).
+    Returns dict with keys: rows (list of dicts), total, page, page_size.
+
+    Created: 2026-02-26
+    """
+    conditions = ["o.validation_status = 'confirmed'"]
+    params: list = []
+
+    if subject:
+        conditions.append("o.subject = ?")
+        params.append(subject)
+    if year is not None:
+        conditions.append("o.year = ?")
+        params.append(int(year))
+    if term:
+        conditions.append("o.term = ?")
+        params.append(term)
+    if search:
+        conditions.append("c.term LIKE ?")
+        params.append(f'%{search}%')
+
+    where = ' AND '.join(conditions)
+
+    count_sql = f"""
+        SELECT COUNT(*)
+        FROM occurrences o
+        JOIN concepts c ON o.concept_id = c.concept_id
+        WHERE {where}
+    """
+    select_sql = f"""
+        SELECT
+            o.occurrence_id,
+            c.concept_id,
+            c.term,
+            o.subject,
+            o.year,
+            o.term        AS term_period,
+            o.unit,
+            o.chapter,
+            o.slide_number,
+            o.is_introduction,
+            o.term_in_context
+        FROM occurrences o
+        JOIN concepts c ON o.concept_id = c.concept_id
+        WHERE {where}
+        ORDER BY o.year,
+                 CASE o.term WHEN 'Autumn1' THEN 1 WHEN 'Autumn2' THEN 2
+                             WHEN 'Spring1' THEN 3 WHEN 'Spring2' THEN 4
+                             WHEN 'Summer1' THEN 5 WHEN 'Summer2' THEN 6
+                             ELSE 7 END,
+                 o.subject, c.term
+        LIMIT ? OFFSET ?
+    """
+
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(count_sql, params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(select_sql, params + [page_size, page * page_size])
+        rows = [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    log.info("get_corpus: returned %d/%d rows (page %d)", len(rows), total, page)
+    return {"rows": rows, "total": total, "page": page, "page_size": page_size}
+
+
+# =============================================================================
 # PHASE B — GRAPH FUNCTIONS (stubs; build when edges table has data)
 # =============================================================================
 

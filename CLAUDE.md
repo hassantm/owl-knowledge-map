@@ -252,6 +252,37 @@ In the Anvil app, the uplink process would handle page retrieval alongside SQLit
 Not during the extraction and graph phases — but design for it by ensuring location metadata in the occurrences table is precise enough to uniquely identify a page. That is already the case. Revisit when building the teacher-facing Anvil visualisation.
 
 ---
+
+## Git Workflow
+
+- `main` — protected; data pipeline, uplink, graph scripts only
+- `anvil-app` — Anvil GitHub integration branch; all Anvil UI code
+- Feature branches from `main` for backend changes; PR to `main`
+- Feature branches from `anvil-app` for UI changes; PR to `anvil-app`
+
+Worktrees:
+- Primary: `~/ai-projects/owl-knowledge-map` (main)
+- Anvil UI: `~/ai-projects/owl-anvil-app` (anvil-app)
+
+---
+
+## Anvil App
+
+App name: OWL Knowledge Map
+App URL: [add after creation]
+Uplink key: set via ANVIL_UPLINK_KEY env var (never commit to git)
+
+Start uplink:
+```bash
+export ANVIL_UPLINK_KEY='your-key-here'
+python src/uplink.py
+```
+
+GitHub integration: Anvil syncs to the `anvil-app` branch.
+Form reference code: `docs/anvil_forms/`
+Setup guide: `docs/20260226_anvil_app_build.md`
+
+---
 ## Rules
 
 - Use Python, SQL and SQLite for this project
@@ -265,7 +296,8 @@ Not during the extraction and graph phases — but design for it by ensuring loc
 ---
 
 ## Sessions
-- Initial build session up to running the batch processing script 24-Feb-2026 claude --resume cbbfbadb-8697-4954-b6c5-f44c4929a36d  
+- Initial build session up to running the batch processing script 24-Feb-2026 claude --resume cbbfbadb-8697-4954-b6c5-f44c4929a36d
+- Anvil app build (git setup, uplink additions, form code, setup docs) 26-Feb-2026 claude --resume 8c55fd00-f270-455a-a0bd-1b1a3850fbad
 
 ---
 
