@@ -1,14 +1,54 @@
 allow_embedding: false
-db_schema: []
+db_schema:
+  users:
+    client: none
+    columns:
+    - admin_ui: {width: 200}
+      client_hidden: false
+      name: email
+      type: string
+    - admin_ui: {width: 200}
+      client_hidden: false
+      name: enabled
+      type: bool
+    - admin_ui: {order: 2, width: 200}
+      client_hidden: false
+      name: last_login
+      type: datetime
+    - admin_ui: {order: 3, width: 200}
+      client_hidden: false
+      name: password_hash
+      type: string
+    - admin_ui: {order: 4, width: 200}
+      client_hidden: false
+      name: n_password_failures
+      type: number
+    - admin_ui: {order: 5, width: 200}
+      client_hidden: false
+      name: confirmed_email
+      type: bool
+    - admin_ui: {order: 6, width: 200}
+      client_hidden: false
+      name: role
+      type: string
+    server: full
+    title: Users
 dependencies: []
 metadata: {color: '#2196F3'}
 name: OWL Knowledge Map
 native_deps: {head_html: ''}
 package_name: OWLKnowledgeMap
-runtime_options: {client_version: '3', server_spec: null, version: 2}
+runtime_options: {client_version: '3', server_spec: null, server_version: python3-sandbox, version: 2}
 services:
 - client_config: {}
   server_config: {}
   source: /runtime/services/anvil/email.yml
+- client_config: {}
+  server_config: {}
+  source: /runtime/services/tables.yml
+- client_config: {allow_signup: false, confirm_email: true, enable_automatically: true, use_email: true}
+  server_config: {user_table: users}
+  source: /runtime/services/anvil/users.yml
 startup: {module: MainForm, type: form}
 startup_form: MainForm
+uplink_visible: true
