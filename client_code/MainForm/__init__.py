@@ -9,9 +9,9 @@ from anvil.tables import app_tables
 import anvil.server
 
 
-class MainForm(Form):
+class MainForm(ColumnPanel):
     def __init__(self, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
 
         if not anvil.users.get_user():
             anvil.users.login_with_form()

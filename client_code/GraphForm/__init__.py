@@ -9,9 +9,9 @@ from anvil.tables import app_tables
 import anvil.server
 
 
-class GraphForm(Form):
+class GraphForm(ColumnPanel):
     def __init__(self, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
         self._build_ui()
         self._check_and_load()
 

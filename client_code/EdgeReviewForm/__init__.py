@@ -17,9 +17,9 @@ NATURE_COLOURS = {
 EDGE_TYPE_COLOURS = {'within_subject': '#3B82F6', 'cross_subject': '#F59E0B'}
 
 
-class EdgeReviewForm(Form):
+class EdgeReviewForm(ColumnPanel):
     def __init__(self, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
         self._all_edges = []
         self._filtered = []
         self._idx = 0

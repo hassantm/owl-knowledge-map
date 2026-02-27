@@ -17,9 +17,9 @@ NATURE_COLOURS = {
 SUBJECT_COLOURS = {'History': '#3B82F6', 'Geography': '#22C55E', 'Religion': '#EF4444'}
 
 
-class ConceptDetailForm(Form):
+class ConceptDetailForm(ColumnPanel):
     def __init__(self, concept_id=None, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
 
         btn_back = Button(text='← Back to Browse', role='secondary-color')
         btn_back.set_event_handler('click', lambda **e: get_open_form()._nav_to('browser'))

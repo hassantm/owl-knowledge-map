@@ -10,9 +10,9 @@ import anvil.server
 from anvil_extras.components import Chip
 
 
-class BrowserForm(Form):
+class BrowserForm(ColumnPanel):
     def __init__(self, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
         self._page = 0
         self._page_size = 50
         self._subject = None

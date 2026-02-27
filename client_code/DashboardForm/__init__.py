@@ -15,9 +15,9 @@ SUBJECT_COLOURS = {
 }
 
 
-class DashboardForm(Form):
+class DashboardForm(ColumnPanel):
     def __init__(self, **properties):
-        self.init_components(**properties)
+        super().__init__(**properties)
         self.add_component(Label(text='Dashboard', bold=True, font_size=20))
         self._load()
 
