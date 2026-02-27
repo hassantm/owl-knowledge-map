@@ -256,13 +256,12 @@ Not during the extraction and graph phases — but design for it by ensuring loc
 ## Git Workflow
 
 - `main` — protected; data pipeline, uplink, graph scripts only
-- `anvil-app` — Anvil GitHub integration branch; all Anvil UI code
+- `anvil-app` — branch exists; originally intended for Anvil GitHub integration (**abandoned — see below**)
 - Feature branches from `main` for backend changes; PR to `main`
-- Feature branches from `anvil-app` for UI changes; PR to `anvil-app`
 
 Worktrees:
 - Primary: `~/ai-projects/owl-knowledge-map` (main)
-- Anvil UI: `~/ai-projects/owl-anvil-app` (anvil-app)
+- Anvil UI worktree exists at `~/ai-projects/owl-anvil-app` (anvil-app) but is no longer the source of truth for Anvil code
 
 ---
 
@@ -278,9 +277,10 @@ export ANVIL_UPLINK_KEY='your-key-here'
 python src/uplink.py
 ```
 
-GitHub integration: Anvil syncs to the `anvil-app` branch.
-Form reference code: `docs/anvil_forms/`
+**GitHub integration abandoned (2026-02-27).** Anvil–GitHub sync was consistently unreliable. The Anvil app is now managed directly in the Anvil IDE. Form reference code lives in `docs/anvil_forms/` and in `~/ai-projects/owl-anvil-app/client_code/` (last known good state) but the Anvil IDE is the source of truth for all form code.
+
 Setup guide: `docs/20260226_anvil_app_build.md`
+Designer rebuild reference: `docs/20260227_anvil_designer_rebuild.md`
 
 ---
 ## Rules
