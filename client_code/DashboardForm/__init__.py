@@ -3,9 +3,6 @@
 
 from anvil import *
 import anvil.users
-import anvil.tables as tables
-import anvil.tables.query as q
-from anvil.tables import app_tables
 import anvil.server
 
 SUBJECT_COLOURS = {
@@ -92,7 +89,7 @@ class DashboardForm(ColumnPanel):
 
         # --- Review CTA (reviewer only) ---
         user = anvil.users.get_user()
-        if user and user.get('role') == 'reviewer':
+        if user and user['role'] == 'reviewer':
             btn = Button(text='Start Edge Review →', role='primary-color')
             btn.set_event_handler('click', lambda **e: get_open_form()._nav_to('edge_review'))
             self.add_component(btn)

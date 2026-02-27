@@ -1,13 +1,8 @@
 # EdgeReviewForm — Edge confirmation workflow (core reviewer tool)
-# Updated: 2026-02-27 — removed m3 components, use classic Anvil
+# Updated: 2026-02-27 — removed anvil_extras and LinearProgress; separate confirm handlers
 
 from anvil import *
-import anvil.users
-import anvil.tables as tables
-import anvil.tables.query as q
-from anvil.tables import app_tables
 import anvil.server
-from anvil_extras.components import Chip
 
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
@@ -15,6 +10,12 @@ NATURE_COLOURS = {
     'cross_subject_application': '#F59E0B',
 }
 EDGE_TYPE_COLOURS = {'within_subject': '#3B82F6', 'cross_subject': '#F59E0B'}
+
+
+def _chip(text, background='#888', foreground='white'):
+    lbl = Label(background=background, foreground=foreground, font_size=11, bold=True)
+    lbl.text = ' ' + text + ' ' if text else ''
+    return lbl
 
 
 class EdgeReviewForm(ColumnPanel):
@@ -57,15 +58,11 @@ class EdgeReviewForm(ColumnPanel):
         fr.add_component(self._dd_subj, full_width_row=False)
         self.add_component(fr)
 
-        # Progress
-        pg_row = ColumnPanel()
+        # Progress label (replaces LinearProgress which is unavailable in Classic)
         self._lbl_progress = Label(text='', foreground='#64748B')
-        pg_row.add_component(self._lbl_progress, full_width_row=False)
-        self._pb = LinearProgress(value=0)
-        pg_row.add_component(self._pb, full_width_row=False)
-        self.add_component(pg_row)
+        self.add_component(self._lbl_progress)
 
-        # Review panel (from | arrow+badge | to)
+        # Review panel: from | arrow+badge | to
         self._panel_review = ColumnPanel()
         review_cols = ColumnPanel()
 
@@ -75,18 +72,17 @@ class EdgeReviewForm(ColumnPanel):
         self._lbl_from_term = Label(text='', bold=True, font_size=20)
         self._lbl_from_loc = Label(text='', foreground='#64748B')
         self._lbl_from_ch = Label(text='', foreground='#94A3B8', font_size=11)
-        self._lbl_from_ctx = Label(text='', italic=True, foreground='#475569')
+        self._lbl_from_ctx = Label(text='', italic=True, foreground='#475569', font_size=12)
         for c in [self._lbl_from_heading, self._lbl_from_term,
                   self._lbl_from_loc, self._lbl_from_ch, self._lbl_from_ctx]:
             self._left.add_component(c)
         review_cols.add_component(self._left, full_width_row=False)
 
-        # MIDDLE — arrow + edge-type chip
+        # MIDDLE — arrow + edge-type badge
         mid = ColumnPanel()
-        self._lbl_arrow = Label(text='→', bold=True, font_size=22, align='center')
-        self._chip_etype = Chip(text='', background='#888', foreground='white')
-        mid.add_component(self._lbl_arrow)
-        mid.add_component(self._chip_etype)
+        mid.add_component(Label(text='->', bold=True, font_size=22))
+        self._lbl_edge_badge = Label(text='', bold=True, font_size=11, foreground='white')
+        mid.add_component(self._lbl_edge_badge)
         review_cols.add_component(mid, full_width_row=False)
 
         # RIGHT — to occurrence
@@ -95,7 +91,7 @@ class EdgeReviewForm(ColumnPanel):
         self._lbl_to_term = Label(text='', bold=True, font_size=20)
         self._lbl_to_loc = Label(text='', foreground='#64748B')
         self._lbl_to_ch = Label(text='', foreground='#94A3B8', font_size=11)
-        self._lbl_to_ctx = Label(text='', italic=True, foreground='#475569')
+        self._lbl_to_ctx = Label(text='', italic=True, foreground='#475569', font_size=12)
         for c in [self._lbl_to_heading, self._lbl_to_term,
                   self._lbl_to_loc, self._lbl_to_ch, self._lbl_to_ctx]:
             self._right.add_component(c)
@@ -103,34 +99,35 @@ class EdgeReviewForm(ColumnPanel):
 
         self._panel_review.add_component(review_cols)
 
-        # Decision row
+        # Decision row — one handler per button, no .tag needed
         dec = ColumnPanel()
-        self._tb_reviewer = TextBox(placeholder='Your name…')
+        self._tb_reviewer = TextBox(placeholder='Your name...')
         dec.add_component(self._tb_reviewer, full_width_row=False)
 
-        for label, nature, colour in [
-            ('Reinforcement', 'reinforcement', '#22C55E'),
-            ('Extension', 'extension', '#3B82F6'),
-            ('Cross-subject Application', 'cross_subject_application', '#F59E0B'),
-        ]:
-            btn = Button(text=label, role='primary-color', background=colour)
-            btn.tag = nature
-            btn.set_event_handler('click', self._on_confirm)
-            dec.add_component(btn, full_width_row=False)
+        btn_r = Button(text='Reinforcement', role='primary-color', background='#22C55E')
+        btn_r.set_event_handler('click', self.btn_reinforcement_click)
+        dec.add_component(btn_r, full_width_row=False)
 
-        btn_skip = Button(text='Skip →', role='secondary-color')
-        btn_skip.set_event_handler('click', self._on_skip)
+        btn_e = Button(text='Extension', role='primary-color', background='#3B82F6')
+        btn_e.set_event_handler('click', self.btn_extension_click)
+        dec.add_component(btn_e, full_width_row=False)
+
+        btn_c = Button(text='Cross-subject Application', role='primary-color', background='#F59E0B')
+        btn_c.set_event_handler('click', self.btn_cross_subject_click)
+        dec.add_component(btn_c, full_width_row=False)
+
+        btn_skip = Button(text='Skip ->', role='secondary-color')
+        btn_skip.set_event_handler('click', self.btn_skip_click)
         dec.add_component(btn_skip, full_width_row=False)
         self._panel_review.add_component(dec)
 
         # Navigation
         nav = ColumnPanel()
-        self._btn_prev = Button(text='← Prev', role='secondary-color', enabled=False)
-        self._btn_prev.set_event_handler('click', self._on_prev)
+        self._btn_prev = Button(text='<- Prev', role='secondary-color', enabled=False)
+        self._btn_prev.set_event_handler('click', self.btn_prev_click)
         nav.add_component(self._btn_prev, full_width_row=False)
-
-        self._btn_next = Button(text='Next →', role='secondary-color', enabled=False)
-        self._btn_next.set_event_handler('click', self._on_next)
+        self._btn_next = Button(text='Next ->', role='secondary-color', enabled=False)
+        self._btn_next.set_event_handler('click', self.btn_next_click)
         nav.add_component(self._btn_next, full_width_row=False)
         self._panel_review.add_component(nav)
 
@@ -163,15 +160,17 @@ class EdgeReviewForm(ColumnPanel):
     def _display(self):
         total = len(self._filtered)
         pct = (self._confirmed_count / self._total_candidates * 100) if self._total_candidates else 0
-        self._pb.value = pct
         self._lbl_progress.text = (
-            f"{self._confirmed_count} confirmed  ·  {len(self._all_edges)} remaining"
+            str(self._confirmed_count) + ' confirmed  |  '
+            + str(len(self._all_edges)) + ' remaining  |  '
+            + str(int(pct)) + '%'
         )
 
         if total == 0:
             self._lbl_header.text = (
-                f"Edge Review — {self._confirmed_count}/{self._total_candidates} confirmed. "
-                "No unconfirmed edges match filters."
+                'Edge Review -- ' + str(self._confirmed_count) + '/'
+                + str(self._total_candidates)
+                + ' confirmed. No unconfirmed edges match filters.'
             )
             self._panel_review.visible = False
             return
@@ -181,15 +180,19 @@ class EdgeReviewForm(ColumnPanel):
         self._current_edge = edge
 
         self._lbl_header.text = (
-            f"Edge Review  ·  {self._confirmed_count}/{self._total_candidates} confirmed  "
-            f"·  {self._idx + 1} of {total}"
+            'Edge Review  |  '
+            + str(self._confirmed_count) + '/' + str(self._total_candidates) + ' confirmed  |  '
+            + str(self._idx + 1) + ' of ' + str(total)
         )
 
         fr = anvil.server.call('get_term_detail', edge['from_occurrence_id'])
         to = anvil.server.call('get_term_detail', edge['to_occurrence_id'])
 
         def loc(d):
-            return f"{d['subject']}  ·  Y{d['year']} {d['term_period']}  ·  {d['unit']}" if d else ''
+            if not d:
+                return ''
+            return (str(d['subject']) + '  |  Y' + str(d['year']) + ' ' + str(d['term_period'])
+                    + '  |  ' + str(d['unit']))
 
         self._lbl_from_term.text = (fr or {}).get('term', '')
         self._lbl_from_loc.text = loc(fr)
@@ -197,8 +200,8 @@ class EdgeReviewForm(ColumnPanel):
         self._lbl_from_ctx.text = (fr or {}).get('term_in_context') or '(no context)'
 
         etype = edge.get('edge_type', '')
-        self._chip_etype.text = etype.replace('_', ' ')
-        self._chip_etype.background = EDGE_TYPE_COLOURS.get(etype, '#888')
+        self._lbl_edge_badge.text = ' ' + etype.replace('_', ' ') + ' '
+        self._lbl_edge_badge.background = EDGE_TYPE_COLOURS.get(etype, '#888')
 
         self._lbl_to_term.text = (to or {}).get('term', '')
         self._lbl_to_loc.text = loc(to)
@@ -209,10 +212,10 @@ class EdgeReviewForm(ColumnPanel):
         self._btn_next.enabled = self._idx < total - 1
 
     # -------------------------------------------------------------------------
-    # Event handlers
+    # Confirm handlers — one per edge_nature, no .tag dependency
     # -------------------------------------------------------------------------
 
-    def _on_confirm(self, sender, **e):
+    def _confirm(self, edge_nature):
         reviewer = (self._tb_reviewer.text or '').strip()
         if not reviewer:
             alert('Enter your name before confirming.')
@@ -221,30 +224,44 @@ class EdgeReviewForm(ColumnPanel):
         result = anvil.server.call(
             'confirm_edge',
             edge['from_occurrence_id'], edge['to_occurrence_id'],
-            sender.tag, reviewer
+            edge_nature, reviewer
         )
         if result.get('ok'):
-            Notification(f"Confirmed: {sender.tag.replace('_', ' ')}", style='success', timeout=2).show()
+            Notification(
+                'Confirmed: ' + edge_nature.replace('_', ' '),
+                style='success', timeout=2
+            ).show()
             self._confirmed_count += 1
-            self._all_edges = [e for e in self._all_edges
-                               if not (e['from_occurrence_id'] == edge['from_occurrence_id']
-                                       and e['to_occurrence_id'] == edge['to_occurrence_id'])]
+            self._all_edges = [
+                e for e in self._all_edges
+                if not (e['from_occurrence_id'] == edge['from_occurrence_id']
+                        and e['to_occurrence_id'] == edge['to_occurrence_id'])
+            ]
             self._apply_filters()
         else:
-            alert(f"Error: {result.get('message')}")
+            alert('Error: ' + str(result.get('message')))
 
-    def _on_skip(self, **e):
+    def btn_reinforcement_click(self, **e):
+        self._confirm('reinforcement')
+
+    def btn_extension_click(self, **e):
+        self._confirm('extension')
+
+    def btn_cross_subject_click(self, **e):
+        self._confirm('cross_subject_application')
+
+    def btn_skip_click(self, **e):
         if self._idx < len(self._filtered) - 1:
             self._idx += 1
             self._display()
 
-    def _on_prev(self, **e):
+    def btn_prev_click(self, **e):
         if self._idx > 0:
             self._idx -= 1
             self._display()
 
-    def _on_next(self, **e):
-        self._on_skip()
+    def btn_next_click(self, **e):
+        self.btn_skip_click(**e)
 
     def _on_etype_filter(self, **e):
         self._edge_type_filter = self._dd_etype.selected_value

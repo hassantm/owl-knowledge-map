@@ -1,13 +1,8 @@
 # ConceptDetailForm — Curriculum timeline for a single concept
-# Updated: 2026-02-27 — removed m3 components, use classic Anvil
+# Updated: 2026-02-27 — removed anvil_extras; _chip() replaces Chip component
 
 from anvil import *
-import anvil.users
-import anvil.tables as tables
-import anvil.tables.query as q
-from anvil.tables import app_tables
 import anvil.server
-from anvil_extras.components import Chip
 
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
@@ -17,11 +12,17 @@ NATURE_COLOURS = {
 SUBJECT_COLOURS = {'History': '#3B82F6', 'Geography': '#22C55E', 'Religion': '#EF4444'}
 
 
+def _chip(text, background='#888', foreground='white'):
+    lbl = Label(background=background, foreground=foreground, font_size=11, bold=True)
+    lbl.text = ' ' + text + ' ' if text else ''
+    return lbl
+
+
 class ConceptDetailForm(ColumnPanel):
     def __init__(self, concept_id=None, **properties):
         super().__init__(**properties)
 
-        btn_back = Button(text='← Back to Browse', role='secondary-color')
+        btn_back = Button(text='<- Back to Browse', role='secondary-color')
         btn_back.set_event_handler('click', lambda **e: get_open_form()._nav_to('browser'))
         self.add_component(btn_back)
 
@@ -34,7 +35,7 @@ class ConceptDetailForm(ColumnPanel):
     def _load(self, concept_id):
         data = anvil.server.call('get_concept_detail', concept_id)
         if not data:
-            self.add_component(Label(text=f'Concept {concept_id} not found.'))
+            self.add_component(Label(text='Concept ' + str(concept_id) + ' not found.'))
             return
 
         concept = data['concept']
@@ -45,14 +46,15 @@ class ConceptDetailForm(ColumnPanel):
         subj_colour = SUBJECT_COLOURS.get(concept.get('subject_area', ''), '#6366F1')
         self.add_component(Label(text=concept['term'], bold=True, font_size=24))
         self.add_component(
-            Chip(
+            _chip(
                 text=concept.get('subject_area') or 'All subjects',
-                background=subj_colour, foreground='white',
+                background=subj_colour,
             )
         )
+        first_year = str(concept.get('first_year', ''))
+        last_year = str(concept.get('last_year', ''))
         self.add_component(Label(
-            text=f"{len(occurrences)} occurrence(s)  ·  "
-                 f"Y{concept.get('first_year', '')}–Y{concept.get('last_year', '')}",
+            text=str(len(occurrences)) + ' occurrence(s)  |  Y' + first_year + '-Y' + last_year,
             foreground='#64748B', font_size=12
         ))
 
@@ -63,13 +65,16 @@ class ConceptDetailForm(ColumnPanel):
 
         # Confirmed edges
         if edges:
-            self.add_component(Label(text=f'Confirmed Edges ({len(edges)})', bold=True, font_size=16))
+            self.add_component(Label(
+                text='Confirmed Edges (' + str(len(edges)) + ')',
+                bold=True, font_size=16
+            ))
             for edge in edges:
                 self.add_component(_EdgeRow(edge))
         else:
             self.add_component(
                 Label(
-                    text='No confirmed edges yet — use Edge Review to confirm connections.',
+                    text='No confirmed edges yet -- use Edge Review to confirm connections.',
                     foreground='#94A3B8', font_size=12,
                 )
             )
@@ -82,17 +87,17 @@ class _OccurrenceRow(ColumnPanel):
 
         row = ColumnPanel()
         row.add_component(
-            Chip(
-                text='INTRO' if is_intro else 'recur',
+            _chip(
+                'INTRO' if is_intro else 'recur',
                 background='#22C55E' if is_intro else '#94A3B8',
-                foreground='white',
             ),
             full_width_row=False
         )
         row.add_component(
             Label(
-                text=f"Y{item.get('year')} {item.get('term')}  ·  "
-                     f"{item.get('subject')}  ·  {item.get('unit', '')}",
+                text=('Y' + str(item.get('year')) + ' ' + str(item.get('term'))
+                      + '  |  ' + str(item.get('subject'))
+                      + '  |  ' + str(item.get('unit', ''))),
                 bold=True,
             ),
             full_width_row=False
@@ -105,7 +110,7 @@ class _OccurrenceRow(ColumnPanel):
 
         ctx = item.get('term_in_context') or ''
         if ctx:
-            preview = (ctx[:220] + '…') if len(ctx) > 220 else ctx
+            preview = (ctx[:220] + '...') if len(ctx) > 220 else ctx
             self.add_component(Label(text=preview, italic=True, foreground='#475569', font_size=12))
 
 
@@ -117,18 +122,18 @@ class _EdgeRow(ColumnPanel):
 
         row = ColumnPanel()
         row.add_component(
-            Label(text=f"Y{item.get('from_year')} {item.get('from_term_period')}  ·  "
-                         f"{item.get('from_unit', '')}"),
+            Label(text=('Y' + str(item.get('from_year')) + ' ' + str(item.get('from_term_period'))
+                        + '  |  ' + str(item.get('from_unit', '')))),
             full_width_row=False
         )
-        row.add_component(Label(text='→', bold=True, font_size=16), full_width_row=False)
+        row.add_component(Label(text='->', bold=True, font_size=16), full_width_row=False)
         row.add_component(
-            Label(text=f"Y{item.get('to_year')} {item.get('to_term_period')}  ·  "
-                         f"{item.get('to_unit', '')}"),
+            Label(text=('Y' + str(item.get('to_year')) + ' ' + str(item.get('to_term_period'))
+                        + '  |  ' + str(item.get('to_unit', '')))),
             full_width_row=False
         )
         row.add_component(
-            Chip(text=nature.replace('_', ' ').title(), background=colour, foreground='white'),
+            _chip(text=nature.replace('_', ' ').title(), background=colour),
             full_width_row=False
         )
         self.add_component(row)
@@ -138,7 +143,7 @@ class _EdgeRow(ColumnPanel):
         if confirmed_by:
             self.add_component(
                 Label(
-                    text=f"Confirmed by {confirmed_by} on {confirmed_date}",
+                    text='Confirmed by ' + confirmed_by + ' on ' + confirmed_date,
                     foreground='#94A3B8', font_size=11,
                 )
             )

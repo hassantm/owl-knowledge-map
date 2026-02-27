@@ -1,13 +1,14 @@
 # BrowserForm — Paginated corpus browser
-# Updated: 2026-02-27 — removed m3 components, use classic Anvil
+# Updated: 2026-02-27 — removed anvil_extras; _chip() replaces Chip component
 
 from anvil import *
-import anvil.users
-import anvil.tables as tables
-import anvil.tables.query as q
-from anvil.tables import app_tables
 import anvil.server
-from anvil_extras.components import Chip
+
+
+def _chip(text, background='#888', foreground='white'):
+    lbl = Label(background=background, foreground=foreground, font_size=11, bold=True)
+    lbl.text = ' ' + text + ' ' if text else ''
+    return lbl
 
 
 class BrowserForm(ColumnPanel):
@@ -40,7 +41,7 @@ class BrowserForm(ColumnPanel):
         self._dd_term.set_event_handler('change', self._on_term)
         fr.add_component(self._dd_term, full_width_row=False)
 
-        self._tb_search = TextBox(placeholder='Search term…')
+        self._tb_search = TextBox(placeholder='Search term...')
         self._tb_search.set_event_handler('lost_focus', self._on_search)
         self._tb_search.set_event_handler('pressed_enter', self._on_search)
         fr.add_component(self._tb_search, full_width_row=False)
@@ -51,14 +52,14 @@ class BrowserForm(ColumnPanel):
         self.add_component(self._results)
 
         pg = ColumnPanel()
-        self._btn_prev = Button(text='← Prev', role='secondary-color', enabled=False)
+        self._btn_prev = Button(text='<- Prev', role='secondary-color', enabled=False)
         self._btn_prev.set_event_handler('click', self._on_prev)
         pg.add_component(self._btn_prev, full_width_row=False)
 
         self._lbl_pg = Label(text='')
         pg.add_component(self._lbl_pg, full_width_row=False)
 
-        self._btn_next = Button(text='Next →', role='secondary-color', enabled=False)
+        self._btn_next = Button(text='Next ->', role='secondary-color', enabled=False)
         self._btn_next.set_event_handler('click', self._on_next)
         pg.add_component(self._btn_next, full_width_row=False)
 
@@ -82,23 +83,46 @@ class BrowserForm(ColumnPanel):
         total = result['total']
         start = self._page * self._page_size + 1
         end = min((self._page + 1) * self._page_size, total)
-        self._lbl_pg.text = f"Page {self._page + 1}  ·  {start}–{end} of {total}" if total else "No results"
+        if total:
+            self._lbl_pg.text = 'Page ' + str(self._page + 1) + '  |  ' + str(start) + '-' + str(end) + ' of ' + str(total)
+        else:
+            self._lbl_pg.text = 'No results'
         self._btn_prev.enabled = self._page > 0
         self._btn_next.enabled = end < total
 
-    def _on_subject(self, **e): self._subject = self._dd_subject.selected_value; self._page = 0; self._load()
-    def _on_year(self, **e): self._year = self._dd_year.selected_value; self._page = 0; self._load()
-    def _on_term(self, **e): self._term = self._dd_term.selected_value; self._page = 0; self._load()
+    def _on_subject(self, **e):
+        self._subject = self._dd_subject.selected_value
+        self._page = 0
+        self._load()
+
+    def _on_year(self, **e):
+        self._year = self._dd_year.selected_value
+        self._page = 0
+        self._load()
+
+    def _on_term(self, **e):
+        self._term = self._dd_term.selected_value
+        self._page = 0
+        self._load()
+
     def _on_search(self, **e):
         q = (self._tb_search.text or '').strip() or None
         if q != self._search:
-            self._search = q; self._page = 0; self._load()
-    def _on_prev(self, **e): self._page -= 1; self._load()
-    def _on_next(self, **e): self._page += 1; self._load()
+            self._search = q
+            self._page = 0
+            self._load()
+
+    def _on_prev(self, **e):
+        self._page -= 1
+        self._load()
+
+    def _on_next(self, **e):
+        self._page += 1
+        self._load()
 
 
 class _BrowserRow(ColumnPanel):
-    """Inline row — Chip badge + term link + location."""
+    """Inline row: intro/recur badge + term link + location."""
 
     def __init__(self, item):
         super().__init__(background='white')
@@ -106,10 +130,9 @@ class _BrowserRow(ColumnPanel):
 
         is_intro = bool(item.get('is_introduction'))
         self.add_component(
-            Chip(
-                text='INTRO' if is_intro else 'recur',
+            _chip(
+                'INTRO' if is_intro else 'recur',
                 background='#22C55E' if is_intro else '#94A3B8',
-                foreground='white',
             ),
             full_width_row=False
         )
@@ -120,8 +143,9 @@ class _BrowserRow(ColumnPanel):
 
         self.add_component(
             Label(
-                text=(f"Y{item.get('year')} {item.get('term_period')}  ·  "
-                      f"{item.get('subject')}  ·  {item.get('unit', '')}"),
+                text=('Y' + str(item.get('year')) + ' ' + str(item.get('term_period', ''))
+                      + '  |  ' + str(item.get('subject', ''))
+                      + '  |  ' + str(item.get('unit', ''))),
                 foreground='#64748B', font_size=11
             ),
             full_width_row=False

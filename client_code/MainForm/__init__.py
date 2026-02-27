@@ -1,12 +1,14 @@
-# MainForm — Navigation shell
-# Updated: 2026-02-27 — removed m3 components, use classic Anvil
+# MainForm — navigation shell
+# Updated: 2026-02-27 — rebuilt as nav-shell only; each form in its own module
 
 from anvil import *
 import anvil.users
-import anvil.tables as tables
-import anvil.tables.query as q
-from anvil.tables import app_tables
 import anvil.server
+from DashboardForm import DashboardForm
+from BrowserForm import BrowserForm
+from EdgeReviewForm import EdgeReviewForm
+from ConceptDetailForm import ConceptDetailForm
+from GraphForm import GraphForm
 
 
 class MainForm(ColumnPanel):
@@ -44,7 +46,7 @@ class MainForm(ColumnPanel):
 
         btn_row = ColumnPanel()
         nav_items = [('Dashboard', 'dashboard'), ('Browse', 'browser'), ('Graph', 'graph')]
-        if user.get('role') == 'reviewer':
+        if user['role'] == 'reviewer':
             nav_items.insert(2, ('Edge Review', 'edge_review'))
 
         for label, target in nav_items:
@@ -66,17 +68,12 @@ class MainForm(ColumnPanel):
     def _nav_to(self, target, **kwargs):
         self._content.clear()
         if target == 'dashboard':
-            from .DashboardForm import DashboardForm
             self._content.add_component(DashboardForm())
         elif target == 'browser':
-            from .BrowserForm import BrowserForm
             self._content.add_component(BrowserForm())
         elif target == 'edge_review':
-            from .EdgeReviewForm import EdgeReviewForm
             self._content.add_component(EdgeReviewForm())
         elif target == 'concept_detail':
-            from .ConceptDetailForm import ConceptDetailForm
             self._content.add_component(ConceptDetailForm(concept_id=kwargs.get('concept_id')))
         elif target == 'graph':
-            from .GraphForm import GraphForm
             self._content.add_component(GraphForm())
