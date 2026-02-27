@@ -1,5 +1,5 @@
 # MainForm — Navigation shell
-# Updated: 2026-02-27 — rewritten with M3 components
+# Updated: 2026-02-27 — removed m3 components, use classic Anvil
 
 from anvil import *
 import anvil.users
@@ -7,7 +7,6 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
-import m3.components as m3
 
 
 class MainForm(Form):
@@ -31,14 +30,14 @@ class MainForm(Form):
 
         title_row = ColumnPanel()
         title_row.add_component(
-            m3.Label(text='OWL Knowledge Map', bold=True, foreground='white', font_size=15),
+            Label(text='OWL Knowledge Map', bold=True, foreground='white', font_size=15),
             full_width_row=False
         )
         title_row.add_component(
-            m3.Label(text=user['email'], foreground='#94A3B8', font_size=11),
+            Label(text=user['email'], foreground='#94A3B8', font_size=11),
             full_width_row=False
         )
-        btn_out = m3.Button(text='Sign out', role='outlined-button')
+        btn_out = Button(text='Sign out', role='secondary-color')
         btn_out.set_event_handler('click', self._on_signout)
         title_row.add_component(btn_out, full_width_row=False)
         nav.add_component(title_row)
@@ -49,7 +48,7 @@ class MainForm(Form):
             nav_items.insert(2, ('Edge Review', 'edge_review'))
 
         for label, target in nav_items:
-            btn = m3.Button(text=label, role='text-button', foreground='white')
+            btn = Button(text=label, role='secondary-color', foreground='white')
             btn.tag = target
             btn.set_event_handler('click', self._on_nav)
             btn_row.add_component(btn, full_width_row=False)

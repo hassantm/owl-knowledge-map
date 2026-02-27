@@ -1,5 +1,5 @@
 # GraphForm — Plotly network graph (stub until edges are confirmed)
-# Updated: 2026-02-27 — M3 components
+# Updated: 2026-02-27 — removed m3 components, use classic Anvil
 
 from anvil import *
 import anvil.users
@@ -7,7 +7,6 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
-import m3.components as m3
 
 
 class GraphForm(Form):
@@ -17,50 +16,50 @@ class GraphForm(Form):
         self._check_and_load()
 
     def _build_ui(self):
-        self.add_component(m3.Label(text='Knowledge Graph', bold=True, font_size=20))
+        self.add_component(Label(text='Knowledge Graph', bold=True, font_size=20))
 
         # Filters
         fr = ColumnPanel()
         opts = anvil.server.call('get_filter_options')
 
-        self._dd_subject = m3.DropdownMenu(
+        self._dd_subject = DropDown(
             items=[('All Subjects', None)] + [(s, s) for s in opts['subjects']],
-            placeholder='All Subjects',
+            include_placeholder=True, placeholder='All Subjects',
         )
         fr.add_component(self._dd_subject, full_width_row=False)
 
         years = opts.get('years', [3, 4, 5, 6])
         year_items = [(f'Year {y}', y) for y in years]
 
-        self._dd_year_from = m3.DropdownMenu(items=year_items, placeholder='Year from')
+        self._dd_year_from = DropDown(items=year_items, include_placeholder=True, placeholder='Year from')
         if years:
-            self._dd_year_from.value = min(years)
-        fr.add_component(m3.Label(text='From', foreground='#64748B'), full_width_row=False)
+            self._dd_year_from.selected_value = min(years)
+        fr.add_component(Label(text='From', foreground='#64748B'), full_width_row=False)
         fr.add_component(self._dd_year_from, full_width_row=False)
 
-        self._dd_year_to = m3.DropdownMenu(items=year_items, placeholder='Year to')
+        self._dd_year_to = DropDown(items=year_items, include_placeholder=True, placeholder='Year to')
         if years:
-            self._dd_year_to.value = max(years)
-        fr.add_component(m3.Label(text='To', foreground='#64748B'), full_width_row=False)
+            self._dd_year_to.selected_value = max(years)
+        fr.add_component(Label(text='To', foreground='#64748B'), full_width_row=False)
         fr.add_component(self._dd_year_to, full_width_row=False)
 
-        self._dd_etype = m3.DropdownMenu(
+        self._dd_etype = DropDown(
             items=[
                 ('All Edge Types', None),
                 ('Within Subject', 'within_subject'),
                 ('Cross Subject', 'cross_subject'),
             ],
-            placeholder='All Edge Types',
+            include_placeholder=True, placeholder='All Edge Types',
         )
         fr.add_component(self._dd_etype, full_width_row=False)
 
-        self._btn_rebuild = m3.Button(text='Rebuild Graph', role='filled-button', enabled=False)
+        self._btn_rebuild = Button(text='Rebuild Graph', role='primary-color', enabled=False)
         self._btn_rebuild.set_event_handler('click', self._on_rebuild)
         fr.add_component(self._btn_rebuild, full_width_row=False)
         self.add_component(fr)
 
         # Stub message
-        self._lbl_stub = m3.Label(
+        self._lbl_stub = Label(
             text='The graph will appear here once edges have been confirmed. '
                  'Use Edge Review to confirm connections.',
             foreground='#94A3B8', font_size=14,
@@ -85,10 +84,10 @@ class GraphForm(Form):
     def _build_graph(self):
         fig = anvil.server.call(
             'get_graph_figure',
-            self._dd_subject.value,
-            self._dd_year_from.value,
-            self._dd_year_to.value,
-            self._dd_etype.value,
+            self._dd_subject.selected_value,
+            self._dd_year_from.selected_value,
+            self._dd_year_to.selected_value,
+            self._dd_etype.selected_value,
         )
         if fig:
             self._plot.figure = fig
