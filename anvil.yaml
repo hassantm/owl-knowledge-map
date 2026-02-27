@@ -52,3 +52,6 @@ services:
 startup: {module: MainForm, type: form}
 startup_form: MainForm
 uplink_visible: true
+dependencies:
+- app_id: '4UK6WHQ6UX7AKELK'  # Anvil M3 Beta
+- app_id: 'C6ZZPAPN4YYF5NVJ'  # Anvil Extras

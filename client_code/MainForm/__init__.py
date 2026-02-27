@@ -1,5 +1,5 @@
 # MainForm — Navigation shell
-# Created: 2026-02-26
+# Updated: 2026-02-27 — rewritten with M3 components
 
 from anvil import *
 import anvil.users
@@ -7,52 +7,49 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
+import m3.components as m3
 
 
 class MainForm(Form):
-    # def __init__(self, **properties):
-    #     self.init_components(**properties)
+    def __init__(self, **properties):
+        self.init_components(**properties)
 
-    #     if not anvil.users.get_user():
-    #         anvil.users.login_with_form()
+        if not anvil.users.get_user():
+            anvil.users.login_with_form()
 
-    #     user = anvil.users.get_user()
-    #     if not user:
-    #         return
+        user = anvil.users.get_user()
+        if not user:
+            return
 
         self._build_nav(user)
         self._content = ColumnPanel()
         self.add_component(self._content)
         self._nav_to('dashboard')
 
-    # -------------------------------------------------------------------------
-
     def _build_nav(self, user):
         nav = ColumnPanel(background='#1e293b')
 
-        # Title row
         title_row = ColumnPanel()
         title_row.add_component(
-            Label(text='OWL Knowledge Map', bold=True, foreground='white', font_size=15),
+            m3.Label(text='OWL Knowledge Map', bold=True, foreground='white', font_size=15),
             full_width_row=False
         )
         title_row.add_component(
-            Label(text=user['email'], foreground='#94A3B8', font_size=11),
+            m3.Label(text=user['email'], foreground='#94A3B8', font_size=11),
             full_width_row=False
         )
-        btn_out = Button(text='Sign out', role='secondary-color')
+        btn_out = m3.Button(text='Sign out', role='outlined-button')
         btn_out.set_event_handler('click', self._on_signout)
         title_row.add_component(btn_out, full_width_row=False)
         nav.add_component(title_row)
 
-        # Nav buttons
         btn_row = ColumnPanel()
         nav_items = [('Dashboard', 'dashboard'), ('Browse', 'browser'), ('Graph', 'graph')]
         if user.get('role') == 'reviewer':
             nav_items.insert(2, ('Edge Review', 'edge_review'))
 
         for label, target in nav_items:
-            btn = Button(text=label, role='secondary-color')
+            btn = m3.Button(text=label, role='text-button', foreground='white')
             btn.tag = target
             btn.set_event_handler('click', self._on_nav)
             btn_row.add_component(btn, full_width_row=False)

@@ -1,5 +1,5 @@
 # DashboardForm — Stats overview and charts
-# Created: 2026-02-26
+# Updated: 2026-02-27 — M3 components
 
 from anvil import *
 import anvil.users
@@ -7,6 +7,7 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
+import m3.components as m3
 
 SUBJECT_COLOURS = {
     'History': '#3B82F6',
@@ -18,7 +19,7 @@ SUBJECT_COLOURS = {
 class DashboardForm(Form):
     def __init__(self, **properties):
         self.init_components(**properties)
-        self.add_component(Label(text='Dashboard', bold=True, font_size=20))
+        self.add_component(m3.Label(text='Dashboard', bold=True, font_size=20))
         self._load()
 
     def _load(self):
@@ -28,7 +29,7 @@ class DashboardForm(Form):
         all_rows = candidates.get('rows', [])
         pending = sum(1 for r in all_rows if not r.get('already_confirmed'))
 
-        # --- Stat cards row ---
+        # --- Stat cards ---
         stat_row = ColumnPanel()
         for label, value, colour in [
             ('Concepts', stats['concepts'], '#3B82F6'),
@@ -36,9 +37,9 @@ class DashboardForm(Form):
             ('Edges Confirmed', stats['confirmed_edges'], '#6366F1'),
             ('Pending Review', pending, '#F59E0B'),
         ]:
-            card = ColumnPanel(background='#F8FAFC')
-            card.add_component(Label(text=str(value), bold=True, font_size=32, foreground=colour))
-            card.add_component(Label(text=label, foreground='#64748B', font_size=12))
+            card = m3.Card()
+            card.add_component(m3.Label(text=str(value), bold=True, font_size=32, foreground=colour))
+            card.add_component(m3.Label(text=label, foreground='#64748B', font_size=12))
             stat_row.add_component(card, full_width_row=False)
         self.add_component(stat_row)
 
@@ -90,9 +91,9 @@ class DashboardForm(Form):
         }
         self.add_component(plot3, full_width_row=False)
 
-        # --- Review button (reviewer only) ---
+        # --- Review CTA (reviewer only) ---
         user = anvil.users.get_user()
         if user and user.get('role') == 'reviewer':
-            btn = Button(text='Start Edge Review →', role='primary-color')
+            btn = m3.Button(text='Start Edge Review →', role='filled-button')
             btn.set_event_handler('click', lambda **e: get_open_form()._nav_to('edge_review'))
             self.add_component(btn)

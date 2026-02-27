@@ -1,5 +1,5 @@
 # EdgeReviewForm — Edge confirmation workflow (core reviewer tool)
-# Created: 2026-02-26
+# Updated: 2026-02-27 — M3 components + Chip edge-type badge
 
 from anvil import *
 import anvil.users
@@ -7,6 +7,8 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
+import m3.components as m3
+from anvil_extras.components import Chip
 
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
@@ -35,21 +37,22 @@ class EdgeReviewForm(Form):
     # -------------------------------------------------------------------------
 
     def _build_ui(self):
-        # Header
-        self._lbl_header = Label(text='Edge Review', bold=True, font_size=18)
+        self._lbl_header = m3.Label(text='Edge Review', bold=True, font_size=18)
         self.add_component(self._lbl_header)
 
         # Filters
         fr = ColumnPanel()
-        self._dd_etype = DropDown(items=[
-            ('All Types', None), ('Within Subject', 'within_subject'), ('Cross Subject', 'cross_subject')
-        ])
+        self._dd_etype = m3.DropdownMenu(
+            items=[('All Types', None), ('Within Subject', 'within_subject'), ('Cross Subject', 'cross_subject')],
+            placeholder='All Types',
+        )
         self._dd_etype.set_event_handler('change', self._on_etype_filter)
         fr.add_component(self._dd_etype, full_width_row=False)
 
         opts = anvil.server.call('get_filter_options')
-        self._dd_subj = DropDown(
-            items=[('All Subjects', None)] + [(s, s) for s in opts['subjects']]
+        self._dd_subj = m3.DropdownMenu(
+            items=[('All Subjects', None)] + [(s, s) for s in opts['subjects']],
+            placeholder='All Subjects',
         )
         self._dd_subj.set_event_handler('change', self._on_subj_filter)
         fr.add_component(self._dd_subj, full_width_row=False)
@@ -57,45 +60,43 @@ class EdgeReviewForm(Form):
 
         # Progress
         pg_row = ColumnPanel()
-        self._lbl_progress = Label(text='', foreground='#64748B')
+        self._lbl_progress = m3.Label(text='', foreground='#64748B')
         pg_row.add_component(self._lbl_progress, full_width_row=False)
-        self._pb = ProgressBar(value=0)
+        self._pb = m3.LinearProgressIndicator(value=0)
         pg_row.add_component(self._pb, full_width_row=False)
         self.add_component(pg_row)
 
-        # Review panel (from | arrow | to)
+        # Review panel (from | arrow+badge | to)
         self._panel_review = ColumnPanel()
-
         review_cols = ColumnPanel()
 
         # LEFT — from occurrence
-        self._left = ColumnPanel(background='#F8FAFC')
-        self._lbl_from_heading = Label(text='FROM', bold=True, foreground='#64748B', font_size=11)
-        self._lbl_from_term = Label(text='', bold=True, font_size=20)
-        self._lbl_from_loc = Label(text='', foreground='#64748B')
-        self._lbl_from_ch = Label(text='', foreground='#94A3B8', font_size=11)
-        self._lbl_from_ctx = Label(text='', italic=True, foreground='#475569')
+        self._left = m3.Card()
+        self._lbl_from_heading = m3.Label(text='FROM', bold=True, foreground='#64748B', font_size=11)
+        self._lbl_from_term = m3.Label(text='', bold=True, font_size=20)
+        self._lbl_from_loc = m3.Label(text='', foreground='#64748B')
+        self._lbl_from_ch = m3.Label(text='', foreground='#94A3B8', font_size=11)
+        self._lbl_from_ctx = m3.Label(text='', italic=True, foreground='#475569')
         for c in [self._lbl_from_heading, self._lbl_from_term,
                   self._lbl_from_loc, self._lbl_from_ch, self._lbl_from_ctx]:
             self._left.add_component(c)
         review_cols.add_component(self._left, full_width_row=False)
 
-        # MIDDLE — arrow + type badge
+        # MIDDLE — arrow + edge-type chip
         mid = ColumnPanel()
-        self._lbl_arrow = Label(text='→', bold=True, font_size=22, align='center')
-        self._lbl_etype_badge = Label(text='', bold=True, foreground='white',
-                                      align='center', font_size=11)
+        self._lbl_arrow = m3.Label(text='→', bold=True, font_size=22, align='center')
+        self._chip_etype = Chip(text='', background='#888', foreground='white')
         mid.add_component(self._lbl_arrow)
-        mid.add_component(self._lbl_etype_badge)
+        mid.add_component(self._chip_etype)
         review_cols.add_component(mid, full_width_row=False)
 
         # RIGHT — to occurrence
-        self._right = ColumnPanel(background='#F8FAFC')
-        self._lbl_to_heading = Label(text='TO', bold=True, foreground='#64748B', font_size=11)
-        self._lbl_to_term = Label(text='', bold=True, font_size=20)
-        self._lbl_to_loc = Label(text='', foreground='#64748B')
-        self._lbl_to_ch = Label(text='', foreground='#94A3B8', font_size=11)
-        self._lbl_to_ctx = Label(text='', italic=True, foreground='#475569')
+        self._right = m3.Card()
+        self._lbl_to_heading = m3.Label(text='TO', bold=True, foreground='#64748B', font_size=11)
+        self._lbl_to_term = m3.Label(text='', bold=True, font_size=20)
+        self._lbl_to_loc = m3.Label(text='', foreground='#64748B')
+        self._lbl_to_ch = m3.Label(text='', foreground='#94A3B8', font_size=11)
+        self._lbl_to_ctx = m3.Label(text='', italic=True, foreground='#475569')
         for c in [self._lbl_to_heading, self._lbl_to_term,
                   self._lbl_to_loc, self._lbl_to_ch, self._lbl_to_ctx]:
             self._right.add_component(c)
@@ -105,7 +106,7 @@ class EdgeReviewForm(Form):
 
         # Decision row
         dec = ColumnPanel()
-        self._tb_reviewer = TextBox(placeholder='Your name…')
+        self._tb_reviewer = m3.TextBox(placeholder='Your name…')
         dec.add_component(self._tb_reviewer, full_width_row=False)
 
         for label, nature, colour in [
@@ -113,23 +114,23 @@ class EdgeReviewForm(Form):
             ('Extension', 'extension', '#3B82F6'),
             ('Cross-subject Application', 'cross_subject_application', '#F59E0B'),
         ]:
-            btn = Button(text=label, background=colour, foreground='white')
+            btn = m3.Button(text=label, role='tonal-button', background=colour, foreground='white')
             btn.tag = nature
             btn.set_event_handler('click', self._on_confirm)
             dec.add_component(btn, full_width_row=False)
 
-        btn_skip = Button(text='Skip →', role='secondary-color')
+        btn_skip = m3.Button(text='Skip →', role='outlined-button')
         btn_skip.set_event_handler('click', self._on_skip)
         dec.add_component(btn_skip, full_width_row=False)
         self._panel_review.add_component(dec)
 
         # Navigation
         nav = ColumnPanel()
-        self._btn_prev = Button(text='← Prev', enabled=False)
+        self._btn_prev = m3.Button(text='← Prev', role='text-button', enabled=False)
         self._btn_prev.set_event_handler('click', self._on_prev)
         nav.add_component(self._btn_prev, full_width_row=False)
 
-        self._btn_next = Button(text='Next →', enabled=False)
+        self._btn_next = m3.Button(text='Next →', role='text-button', enabled=False)
         self._btn_next.set_event_handler('click', self._on_next)
         nav.add_component(self._btn_next, full_width_row=False)
         self._panel_review.add_component(nav)
@@ -185,7 +186,6 @@ class EdgeReviewForm(Form):
             f"·  {self._idx + 1} of {total}"
         )
 
-        # Load full context for both sides
         fr = anvil.server.call('get_term_detail', edge['from_occurrence_id'])
         to = anvil.server.call('get_term_detail', edge['to_occurrence_id'])
 
@@ -198,8 +198,8 @@ class EdgeReviewForm(Form):
         self._lbl_from_ctx.text = (fr or {}).get('term_in_context') or '(no context)'
 
         etype = edge.get('edge_type', '')
-        self._lbl_etype_badge.text = etype.replace('_', ' ')
-        self._lbl_etype_badge.background = EDGE_TYPE_COLOURS.get(etype, '#888')
+        self._chip_etype.text = etype.replace('_', ' ')
+        self._chip_etype.background = EDGE_TYPE_COLOURS.get(etype, '#888')
 
         self._lbl_to_term.text = (to or {}).get('term', '')
         self._lbl_to_loc.text = loc(to)
@@ -248,9 +248,9 @@ class EdgeReviewForm(Form):
         self._on_skip()
 
     def _on_etype_filter(self, **e):
-        self._edge_type_filter = self._dd_etype.selected_value
+        self._edge_type_filter = self._dd_etype.value
         self._apply_filters()
 
     def _on_subj_filter(self, **e):
-        self._subject_filter = self._dd_subj.selected_value
+        self._subject_filter = self._dd_subj.value
         self._apply_filters()

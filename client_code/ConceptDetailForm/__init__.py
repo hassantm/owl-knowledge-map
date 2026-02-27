@@ -1,6 +1,5 @@
 # ConceptDetailForm — Curriculum timeline for a single concept
-# _OccurrenceRow and _EdgeRow are inline helper classes, no separate forms needed.
-# Created: 2026-02-26
+# Updated: 2026-02-27 — M3 components + Chip badges
 
 from anvil import *
 import anvil.users
@@ -8,6 +7,8 @@ import anvil.tables as tables
 import anvil.tables.query as q
 from anvil.tables import app_tables
 import anvil.server
+import m3.components as m3
+from anvil_extras.components import Chip
 
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
@@ -21,13 +22,12 @@ class ConceptDetailForm(Form):
     def __init__(self, concept_id=None, **properties):
         self.init_components(**properties)
 
-        # Back button
-        btn_back = Button(text='← Back to Browse', role='secondary-color')
+        btn_back = m3.Button(text='← Back to Browse', role='outlined-button')
         btn_back.set_event_handler('click', lambda **e: get_open_form()._nav_to('browser'))
         self.add_component(btn_back)
 
         if concept_id is None:
-            self.add_component(Label(text='No concept selected.', foreground='#94A3B8'))
+            self.add_component(m3.Label(text='No concept selected.', foreground='#94A3B8'))
             return
 
         self._load(concept_id)
@@ -35,7 +35,7 @@ class ConceptDetailForm(Form):
     def _load(self, concept_id):
         data = anvil.server.call('get_concept_detail', concept_id)
         if not data:
-            self.add_component(Label(text=f'Concept {concept_id} not found.'))
+            self.add_component(m3.Label(text=f'Concept {concept_id} not found.'))
             return
 
         concept = data['concept']
@@ -44,31 +44,35 @@ class ConceptDetailForm(Form):
 
         # Header
         subj_colour = SUBJECT_COLOURS.get(concept.get('subject_area', ''), '#6366F1')
-        self.add_component(Label(text=concept['term'], bold=True, font_size=24))
+        self.add_component(m3.Label(text=concept['term'], bold=True, font_size=24))
         self.add_component(
-            Label(text=concept.get('subject_area') or 'All subjects',
-                  foreground=subj_colour, font_size=13, bold=True)
+            Chip(
+                text=concept.get('subject_area') or 'All subjects',
+                background=subj_colour, foreground='white',
+            )
         )
-        self.add_component(Label(
+        self.add_component(m3.Label(
             text=f"{len(occurrences)} occurrence(s)  ·  "
                  f"Y{concept.get('first_year', '')}–Y{concept.get('last_year', '')}",
             foreground='#64748B', font_size=12
         ))
 
         # Occurrence timeline
-        self.add_component(Label(text='Curriculum Timeline', bold=True, font_size=16))
+        self.add_component(m3.Label(text='Curriculum Timeline', bold=True, font_size=16))
         for occ in occurrences:
             self.add_component(_OccurrenceRow(occ))
 
         # Confirmed edges
         if edges:
-            self.add_component(Label(text=f'Confirmed Edges ({len(edges)})', bold=True, font_size=16))
+            self.add_component(m3.Label(text=f'Confirmed Edges ({len(edges)})', bold=True, font_size=16))
             for edge in edges:
                 self.add_component(_EdgeRow(edge))
         else:
             self.add_component(
-                Label(text='No confirmed edges yet — use Edge Review to confirm connections.',
-                      foreground='#94A3B8', font_size=12)
+                m3.Label(
+                    text='No confirmed edges yet — use Edge Review to confirm connections.',
+                    foreground='#94A3B8', font_size=12,
+                )
             )
 
 
@@ -79,19 +83,23 @@ class _OccurrenceRow(ColumnPanel):
 
         row = ColumnPanel()
         row.add_component(
-            Label(text='INTRO' if is_intro else 'recur', bold=True,
-                  foreground='white',
-                  background='#22C55E' if is_intro else '#94A3B8'),
+            Chip(
+                text='INTRO' if is_intro else 'recur',
+                background='#22C55E' if is_intro else '#94A3B8',
+                foreground='white',
+            ),
             full_width_row=False
         )
         row.add_component(
-            Label(text=f"Y{item.get('year')} {item.get('term')}  ·  "
-                       f"{item.get('subject')}  ·  {item.get('unit', '')}",
-                  bold=True),
+            m3.Label(
+                text=f"Y{item.get('year')} {item.get('term')}  ·  "
+                     f"{item.get('subject')}  ·  {item.get('unit', '')}",
+                bold=True,
+            ),
             full_width_row=False
         )
         row.add_component(
-            Label(text=item.get('chapter') or '', foreground='#94A3B8', font_size=11),
+            m3.Label(text=item.get('chapter') or '', foreground='#94A3B8', font_size=11),
             full_width_row=False
         )
         self.add_component(row)
@@ -99,7 +107,7 @@ class _OccurrenceRow(ColumnPanel):
         ctx = item.get('term_in_context') or ''
         if ctx:
             preview = (ctx[:220] + '…') if len(ctx) > 220 else ctx
-            self.add_component(Label(text=preview, italic=True, foreground='#475569', font_size=12))
+            self.add_component(m3.Label(text=preview, italic=True, foreground='#475569', font_size=12))
 
 
 class _EdgeRow(ColumnPanel):
@@ -110,18 +118,18 @@ class _EdgeRow(ColumnPanel):
 
         row = ColumnPanel()
         row.add_component(
-            Label(text=f"Y{item.get('from_year')} {item.get('from_term_period')}  ·  "
-                       f"{item.get('from_unit', '')}"),
+            m3.Label(text=f"Y{item.get('from_year')} {item.get('from_term_period')}  ·  "
+                         f"{item.get('from_unit', '')}"),
             full_width_row=False
         )
-        row.add_component(Label(text='→', bold=True, font_size=16), full_width_row=False)
+        row.add_component(m3.Label(text='→', bold=True, font_size=16), full_width_row=False)
         row.add_component(
-            Label(text=f"Y{item.get('to_year')} {item.get('to_term_period')}  ·  "
-                       f"{item.get('to_unit', '')}"),
+            m3.Label(text=f"Y{item.get('to_year')} {item.get('to_term_period')}  ·  "
+                         f"{item.get('to_unit', '')}"),
             full_width_row=False
         )
         row.add_component(
-            Label(text=nature.replace('_', ' ').title(), bold=True, foreground=colour),
+            Chip(text=nature.replace('_', ' ').title(), background=colour, foreground='white'),
             full_width_row=False
         )
         self.add_component(row)
@@ -130,6 +138,8 @@ class _EdgeRow(ColumnPanel):
         confirmed_date = item.get('confirmed_date') or ''
         if confirmed_by:
             self.add_component(
-                Label(text=f"Confirmed by {confirmed_by} on {confirmed_date}",
-                      foreground='#94A3B8', font_size=11)
+                m3.Label(
+                    text=f"Confirmed by {confirmed_by} on {confirmed_date}",
+                    foreground='#94A3B8', font_size=11,
+                )
             )
