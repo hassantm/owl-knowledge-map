@@ -495,6 +495,51 @@ def get_dashboard_stats() -> dict:
 
 
 @anvil.server.callable
+def get_words_per_year() -> dict:
+    """
+    Return new vocabulary introductions (is_introduction=1) per year,
+    broken down by subject.
+
+    Returns a dict keyed by subject ('History', 'Geography', 'Religion'),
+    each value a dict of {year: count}.  Also includes a 'total' key with
+    cross-subject counts per year.
+
+    Added: 2026-02-28
+    """
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                subject,
+                sum(CASE WHEN year = 3 THEN 1 ELSE 0 END) AS y3,
+                sum(CASE WHEN year = 4 THEN 1 ELSE 0 END) AS y4,
+                sum(CASE WHEN year = 5 THEN 1 ELSE 0 END) AS y5,
+                sum(CASE WHEN year = 6 THEN 1 ELSE 0 END) AS y6
+            FROM occurrences
+            WHERE is_introduction = 1
+            GROUP BY subject
+            ORDER BY subject
+        """)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    result = {}
+    totals = {3: 0, 4: 0, 5: 0, 6: 0}
+    for row in rows:
+        subj = row[0]
+        counts = {3: row[1] or 0, 4: row[2] or 0, 5: row[3] or 0, 6: row[4] or 0}
+        result[subj] = counts
+        for y in [3, 4, 5, 6]:
+            totals[y] += counts[y]
+    result['total'] = totals
+
+    log.info("get_words_per_year: %s", {k: sum(v.values()) for k, v in result.items()})
+    return result
+
+
+@anvil.server.callable
 def get_corpus(
     subject: str = None,
     year: int = None,
