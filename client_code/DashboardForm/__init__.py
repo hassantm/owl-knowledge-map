@@ -105,7 +105,7 @@ class DashboardForm(ColumnPanel):
         plot4.layout = {
             'title': 'New Vocabulary Introduced per Year',
             'height': 320,
-            'barmode': 'stack',
+            'barmode': 'group',
             'margin': {'t': 40, 'b': 40, 'l': 50, 'r': 20},
             'plot_bgcolor': 'white',
         }
