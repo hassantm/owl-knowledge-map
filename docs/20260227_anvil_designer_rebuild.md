@@ -221,6 +221,38 @@ ColumnPanel
 
 ---
 
+## Form Creation Order (new app build)
+
+Create forms in this order — **MainForm must be last** because its code imports from all the others.
+
+| # | Form name | Notes |
+|---|-----------|-------|
+| 1 | `DashboardForm` | |
+| 2 | `BrowserForm` | |
+| 3 | `EdgeReviewForm` | |
+| 4 | `ConceptDetailForm` | |
+| 5 | `GraphForm` | |
+| 6 | `MainForm` | Rename the default `Form1` Anvil creates; this becomes the startup form automatically |
+
+**Why this order:** `MainForm/__init__.py` contains:
+```python
+from DashboardForm import DashboardForm
+from BrowserForm import BrowserForm
+from EdgeReviewForm import EdgeReviewForm
+from ConceptDetailForm import ConceptDetailForm
+from GraphForm import GraphForm
+```
+If any of those forms don't exist when MainForm is saved, the imports fail on load.
+
+**Practical tip:** create all six form shells first (no code), then paste code into each form in the same order (1–6). All forms exist before any code runs — safer than pasting as you go.
+
+Code to paste for each form is in:
+```
+~/ai-projects/owl-anvil-app/client_code/FormName/__init__.py
+```
+
+---
+
 ## Starting the Uplink
 
 ```bash
