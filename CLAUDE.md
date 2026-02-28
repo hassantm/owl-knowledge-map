@@ -6,8 +6,6 @@ This project analyses the Opening Worlds Ltd (OWL) Key Stage 2 humanities curric
 
 The goal is to extract the conceptual vocabulary deliberately embedded in the curriculum booklets, build a structured database of those concepts and their locations, and ultimately construct a directed knowledge graph showing how concepts are introduced, reinforced and built upon across subjects and years. This makes visible to teachers the curricular architecture that currently exists only in the authors' heads.
 
-Your role is to be the senior developer on the project.  the Owner (me) has some technical knowledge of Python, SQL and network data structures as well as knowledge of the curriculum and teaching methodology. 
-
 ---
 
 ## Source Material
@@ -253,54 +251,6 @@ Not during the extraction and graph phases — but design for it by ensuring loc
 
 ---
 
-## Git Workflow
-
-- `main` — protected; data pipeline, uplink, graph scripts only
-- `anvil-app` — branch exists; originally intended for Anvil GitHub integration (**abandoned — see below**)
-- Feature branches from `main` for backend changes; PR to `main`
-
-Worktrees:
-- Primary: `~/ai-projects/owl-knowledge-map` (main)
-- Anvil UI worktree exists at `~/ai-projects/owl-anvil-app` (anvil-app) but is no longer the source of truth for Anvil code
-
----
-
-## Anvil App
-
-App name: OWL Knowledge Map
-App URL: [add after creation]
-Uplink key: set via ANVIL_UPLINK_KEY env var (never commit to git)
-
-Start uplink:
-```bash
-export ANVIL_UPLINK_KEY='your-key-here'
-python src/uplink.py
-```
-
-**GitHub integration abandoned (2026-02-27).** Anvil–GitHub sync was consistently unreliable. The Anvil app is now managed directly in the Anvil IDE. Form reference code lives in `docs/anvil_forms/` and in `~/ai-projects/owl-anvil-app/client_code/` (last known good state) but the Anvil IDE is the source of truth for all form code.
-
-Setup guide: `docs/20260226_anvil_app_build.md`
-Designer rebuild reference: `docs/20260227_anvil_designer_rebuild.md`
-
----
-## Rules
-
-- Use Python, SQL and SQLite for this project
-- Write clean, easily read code with good error hadnling and logging of errors
-- Use standard Python code conventions
-- Where code is changed, leave a timestamped comment of what was done
-- The project will be held in GitHub
-- Be concise in your output, if necessary sacrifice grammar for consision. 
-- Write plan documentation to the docs folder when you create it prefixed with the date in YYYYMMDD format
-
----
-
-## Sessions
-- Initial build session up to running the batch processing script 24-Feb-2026 claude --resume cbbfbadb-8697-4954-b6c5-f44c4929a36d
-- Anvil app build (git setup, uplink additions, form code, setup docs) 26-Feb-2026 claude --resume 8c55fd00-f270-455a-a0bd-1b1a3850fbad
-
----
-
 ## Project Owner
 Hassan Mamdani, COO/CFO, Opening Worlds Ltd  
 This is an internal professional project to make the curriculum's knowledge architecture visible to teachers.
@@ -308,4 +258,3 @@ This is an internal professional project to make the curriculum's knowledge arch
 ## Curriculum Authors
 Christine Counsell and Steve Mastin, Opening Worlds Ltd  
 © 2021 Christine Counsell and Steve Mastin
-

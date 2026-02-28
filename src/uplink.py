@@ -461,11 +461,6 @@ def get_dashboard_stats() -> dict:
         concepts = cursor.fetchone()[0]
 
         cursor.execute(
-            "SELECT COUNT(*) FROM occurrences WHERE validation_status = 'confirmed'"
-        )
-        occurrences = cursor.fetchone()[0]
-
-        cursor.execute(
             "SELECT COUNT(*) FROM edges WHERE confirmed_by IS NOT NULL"
         )
         confirmed_edges = cursor.fetchone()[0]
@@ -478,6 +473,8 @@ def get_dashboard_stats() -> dict:
             ORDER BY subject
         """)
         by_subject = {r[0]: r[1] for r in cursor.fetchall()}
+        # Derive total from the grouped result — avoids a second scan of occurrences
+        occurrences = sum(by_subject.values())
 
     finally:
         conn.close()
@@ -518,6 +515,7 @@ def get_words_per_year() -> dict:
                 sum(CASE WHEN year = 6 THEN 1 ELSE 0 END) AS y6
             FROM occurrences
             WHERE is_introduction = 1
+              AND validation_status = 'confirmed'
             GROUP BY subject
             ORDER BY subject
         """)

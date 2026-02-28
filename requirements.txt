@@ -1,3 +1,5 @@
 networkx
 python-pptx
 python-docx
+anvil-uplink
+plotly
