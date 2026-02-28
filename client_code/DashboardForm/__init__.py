@@ -1,5 +1,6 @@
 # DashboardForm — Stats overview and charts
 # Updated: 2026-02-27 — removed m3 components, use classic Anvil
+# Updated: 2026-02-28 — added new vocabulary per year stacked bar chart
 
 from anvil import *
 import anvil.users
@@ -22,6 +23,7 @@ class DashboardForm(ColumnPanel):
         stats = anvil.server.call('get_dashboard_stats')
         load_bearing = anvil.server.call('get_load_bearing_concepts', 2)
         candidates = anvil.server.call('get_candidate_edges_list', None, None, True, 0, 200)
+        words_per_year = anvil.server.call('get_words_per_year')
         all_rows = candidates.get('rows', [])
         pending = sum(1 for r in all_rows if not r.get('already_confirmed'))
 
@@ -86,6 +88,28 @@ class DashboardForm(ColumnPanel):
             'margin': {'t': 40, 'b': 20, 'l': 20, 'r': 20},
         }
         self.add_component(plot3, full_width_row=False)
+
+        # --- Chart: new vocabulary introduced per year, by subject ---
+        years = [3, 4, 5, 6]
+        plot4 = Plot()
+        plot4.data = [
+            {
+                'type': 'bar',
+                'name': subj,
+                'x': ['Year ' + str(y) for y in years],
+                'y': [words_per_year.get(subj, {}).get(y, 0) for y in years],
+                'marker': {'color': SUBJECT_COLOURS.get(subj, '#888')},
+            }
+            for subj in ['History', 'Geography', 'Religion']
+        ]
+        plot4.layout = {
+            'title': 'New Vocabulary Introduced per Year',
+            'height': 320,
+            'barmode': 'stack',
+            'margin': {'t': 40, 'b': 40, 'l': 50, 'r': 20},
+            'plot_bgcolor': 'white',
+        }
+        self.add_component(plot4, full_width_row=False)
 
         # --- Review CTA (reviewer only) ---
         user = anvil.users.get_user()
