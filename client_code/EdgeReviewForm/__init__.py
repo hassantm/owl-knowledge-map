@@ -7,7 +7,7 @@ import anvil.server
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
     'extension': '#3B82F6',
-    'cross_subject_application': '#F59E0B',
+    'application': '#F59E0B',
 }
 EDGE_TYPE_COLOURS = {'within_subject': '#3B82F6', 'cross_subject': '#F59E0B'}
 
@@ -112,7 +112,7 @@ class EdgeReviewForm(ColumnPanel):
         btn_e.set_event_handler('click', self.btn_extension_click)
         dec.add_component(btn_e, full_width_row=False)
 
-        btn_c = Button(text='Cross-subject Application', role='primary-color', background='#F59E0B')
+        btn_c = Button(text='Application', role='primary-color', background='#F59E0B')
         btn_c.set_event_handler('click', self.btn_cross_subject_click)
         dec.add_component(btn_c, full_width_row=False)
 
@@ -248,7 +248,7 @@ class EdgeReviewForm(ColumnPanel):
         self._confirm('extension')
 
     def btn_cross_subject_click(self, **e):
-        self._confirm('cross_subject_application')
+        self._confirm('application')
 
     def btn_skip_click(self, **e):
         if self._idx < len(self._filtered) - 1:
