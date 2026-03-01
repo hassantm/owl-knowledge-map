@@ -6,7 +6,7 @@ _2026-02-26_
 The graph is directed and multi-layer:
 - **Concept nodes** — abstract vocabulary item (e.g. "empire")
 - **Occurrence nodes** — specific curriculum location (subject / year / term / unit / slide)
-- **Directed edges** — pedagogical sequence from earlier to later occurrence, with `edge_nature` label (reinforcement / extension / cross_subject_application)
+- **Directed edges** — pedagogical sequence from earlier to later occurrence, with `edge_nature` label (reinforcement / extension / application)
 
 The primary audience is teachers and curriculum experts (potentially Counsell/Mastin). It will be delivered inside the Anvil web app via the existing Uplink architecture. Interactivity — hover, filter, click-to-explore — is essential.
 
@@ -130,7 +130,7 @@ SUBJECT_COLOURS = {
 EDGE_COLOURS = {
     "reinforcement": "#4477aa",
     "extension": "#ee6677",
-    "cross_subject_application": "#228833"
+    "application": "#228833"
 }
 
 def render_pyvis(G):

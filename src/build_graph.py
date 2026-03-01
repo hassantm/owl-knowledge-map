@@ -163,7 +163,7 @@ def export_candidates(candidates: list[dict], output_path: Path) -> None:
     Write candidate edges to CSV for human review.
 
     Columns include a blank 'edge_nature' for the reviewer to fill in:
-      reinforcement, extension, cross_subject_application
+      reinforcement, extension, application
 
     Created: 2026-02-26
     """
@@ -175,7 +175,7 @@ def export_candidates(candidates: list[dict], output_path: Path) -> None:
         'to_occurrence_id', 'to_subject', 'to_year', 'to_term',
         'to_unit', 'to_chapter',
         'edge_type',
-        'edge_nature',      # reviewer fills in: reinforcement / extension / cross_subject_application
+        'edge_nature',      # reviewer fills in: reinforcement / extension / application
         'confirmed_by',     # reviewer fills in: their name
         'already_confirmed',
         'notes',

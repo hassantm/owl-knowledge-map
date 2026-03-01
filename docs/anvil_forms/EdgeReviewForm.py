@@ -41,7 +41,7 @@ DESIGNER SETUP:
     tb_reviewer         : TextBox  placeholder='Your name…'
     btn_reinforcement   : Button   text='Reinforcement',         role='primary-color'
     btn_extension       : Button   text='Extension',             role='primary-color'
-    btn_cross_subject   : Button   text='Cross-subject Application', role='primary-color'
+    btn_cross_subject   : Button   text='Application', role='primary-color'
     btn_skip            : Button   text='Skip →',                role='secondary-color'
 
   Navigation:
@@ -212,7 +212,7 @@ class EdgeReviewForm(EdgeReviewFormTemplate):
         self._confirm('extension')
 
     def btn_cross_subject_click(self, **event_args):
-        self._confirm('cross_subject_application')
+        self._confirm('application')
 
     def btn_skip_click(self, **event_args):
         self._advance()

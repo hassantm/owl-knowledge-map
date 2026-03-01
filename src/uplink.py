@@ -915,7 +915,7 @@ def confirm_edge(
     """
     Write a confirmed edge to the edges table.
 
-    edge_nature: 'reinforcement' | 'extension' | 'cross_subject_application'
+    edge_nature: 'reinforcement' | 'extension' | 'application'
     confirmed_by: reviewer's name (required)
     edge_type: auto-detected from subject match if not supplied
 
@@ -927,13 +927,13 @@ def confirm_edge(
     """
     from datetime import date
 
-    valid_natures = {'reinforcement', 'extension', 'cross_subject_application'}
+    valid_natures = {'reinforcement', 'extension', 'application'}
     if edge_nature not in valid_natures:
         return {
             'ok': False,
             'message': (
                 f"Invalid edge_nature '{edge_nature}'. "
-                f"Use: reinforcement, extension, cross_subject_application"
+                f"Use: reinforcement, extension, application"
             ),
         }
     if not confirmed_by or not confirmed_by.strip():

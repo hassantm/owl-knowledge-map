@@ -23,7 +23,7 @@ from anvil import *
 NATURE_COLOURS = {
     'reinforcement': '#22C55E',
     'extension': '#3B82F6',
-    'cross_subject_application': '#F59E0B',
+    'application': '#F59E0B',
 }
 
 

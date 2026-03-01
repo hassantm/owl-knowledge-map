@@ -6,6 +6,8 @@ This project analyses the Opening Worlds Ltd (OWL) Key Stage 2 humanities curric
 
 The goal is to extract the conceptual vocabulary deliberately embedded in the curriculum booklets, build a structured database of those concepts and their locations, and ultimately construct a directed knowledge graph showing how concepts are introduced, reinforced and built upon across subjects and years. This makes visible to teachers the curricular architecture that currently exists only in the authors' heads.
 
+Your role is to be the senior developer on the project.  the Owner (me) has some technical knowledge of Python, SQL and network data structures as well as knowledge of the curriculum and teaching methodology. 
+
 ---
 
 ## Source Material
@@ -81,7 +83,7 @@ CREATE TABLE edges (
     from_occurrence     INTEGER REFERENCES occurrences(occurrence_id),
     to_occurrence       INTEGER REFERENCES occurrences(occurrence_id),
     edge_type           TEXT,   -- 'within_subject' or 'cross_subject'
-    edge_nature         TEXT,   -- 'reinforcement', 'extension', or 'application'
+    edge_nature         TEXT,   -- 'reinforcement', 'extension', or 'cross_subject_application'
     confirmed_by        TEXT,   -- Name of human reviewer
     confirmed_date      TEXT    -- ISO date string YYYY-MM-DD
 );
@@ -155,7 +157,7 @@ CREATE TABLE edges (
 - **Concept nodes** — abstract term (parent)
 - **Occurrence nodes** — specific location instance (child), with metadata: subject, year, term, unit
 - **Directed edges** — from earlier to later occurrence, human-confirmed
-- **Edge attributes** — edge_type (within/cross subject), edge_nature (reinforcement/extension/application)
+- **Edge attributes** — edge_type (within/cross subject), edge_nature (reinforcement/extension/cross_subject_application)
 
 ### Key Analytical Questions the Graph Should Answer
 1. Which concepts are load-bearing — appearing most frequently across years and subjects?
@@ -196,32 +198,6 @@ The human review workflow is central to the project's scholarly integrity. The A
 This interface is particularly important if Christine Counsell or Steve Mastin are involved in reviewing connections — it needs to be usable by curriculum experts, not just technical users.
 
 ---
-
-
----
-
-## Design Decisions
-
-### edge_nature Values (decided 2026-03-01)
-
-`edge_nature` and `edge_type` are fully orthogonal — any nature can pair with any type.
-
-**`edge_type`** — structural dimension (auto-detected from subject match):
-- `within_subject` — both occurrences in the same subject
-- `cross_subject` — occurrences span different subjects
-
-**`edge_nature`** — pedagogical dimension (human-assigned):
-- `reinforcement` — same concept, same kind of work; builds fluency and familiarity
-- `extension` — concept accumulates new dimensions, does more sophisticated work (e.g. "empire" gaining layers across Roman → Mughal → British contexts)
-- `application` — concept deployed as a schema to understand something new; the active, generative use Hirsch's cultural literacy thesis describes
-
-**Why "application" not "cross_subject_application":** The original third value conflated structural information (already captured by `edge_type`) with pedagogical character. `application` can occur within a subject (e.g. "trade" in Mesopotamia applied to medieval trade routes — same subject, new context) as well as across subjects. Dropping the structural qualifier enables the full 3×2 matrix and aligns with Counsell's framing that knowledge does increasingly sophisticated *work*.
-
-| | within_subject | cross_subject |
-|---|---|---|
-| reinforcement | ✓ | ✓ |
-| extension | ✓ | ✓ |
-| application | ✓ | ✓ |
 
 ## Future Phases
 
@@ -277,6 +253,54 @@ Not during the extraction and graph phases — but design for it by ensuring loc
 
 ---
 
+## Git Workflow
+
+- `main` — protected; data pipeline, uplink, graph scripts only
+- `anvil-app` — branch exists; originally intended for Anvil GitHub integration (**abandoned — see below**)
+- Feature branches from `main` for backend changes; PR to `main`
+
+Worktrees:
+- Primary: `~/ai-projects/owl-knowledge-map` (main)
+- Anvil UI worktree exists at `~/ai-projects/owl-anvil-app` (anvil-app) but is no longer the source of truth for Anvil code
+
+---
+
+## Anvil App
+
+App name: OWL Knowledge Map
+App URL: [add after creation]
+Uplink key: set via ANVIL_UPLINK_KEY env var (never commit to git)
+
+Start uplink:
+```bash
+export ANVIL_UPLINK_KEY='your-key-here'
+python src/uplink.py
+```
+
+**GitHub integration abandoned (2026-02-27).** Anvil–GitHub sync was consistently unreliable. The Anvil app is now managed directly in the Anvil IDE. Form reference code lives in `docs/anvil_forms/` and in `~/ai-projects/owl-anvil-app/client_code/` (last known good state) but the Anvil IDE is the source of truth for all form code.
+
+Setup guide: `docs/20260226_anvil_app_build.md`
+Designer rebuild reference: `docs/20260227_anvil_designer_rebuild.md`
+
+---
+## Rules
+
+- Use Python, SQL and SQLite for this project
+- Write clean, easily read code with good error hadnling and logging of errors
+- Use standard Python code conventions
+- Where code is changed, leave a timestamped comment of what was done
+- The project will be held in GitHub
+- Be concise in your output, if necessary sacrifice grammar for consision. 
+- Write plan documentation to the docs folder when you create it prefixed with the date in YYYYMMDD format
+
+---
+
+## Sessions
+- Initial build session up to running the batch processing script 24-Feb-2026 claude --resume cbbfbadb-8697-4954-b6c5-f44c4929a36d
+- Anvil app build (git setup, uplink additions, form code, setup docs) 26-Feb-2026 claude --resume 8c55fd00-f270-455a-a0bd-1b1a3850fbad
+
+---
+
 ## Project Owner
 Hassan Mamdani, COO/CFO, Opening Worlds Ltd  
 This is an internal professional project to make the curriculum's knowledge architecture visible to teachers.
@@ -284,3 +308,4 @@ This is an internal professional project to make the curriculum's knowledge arch
 ## Curriculum Authors
 Christine Counsell and Steve Mastin, Opening Worlds Ltd  
 © 2021 Christine Counsell and Steve Mastin
+

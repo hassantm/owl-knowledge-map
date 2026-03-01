@@ -387,7 +387,7 @@ self (ColumnPanel)
 | `self._tb_reviewer` | TextBox | placeholder: `"Your name..."` | Reviewer types their name — persists across edges | Checked before confirming — shows error if blank |
 | `btn_reinforcement` | Button | `"Reinforcement"` | Fixed | `background='#22C55E'`, `foreground='white'`. Click: `_confirm('reinforcement')` |
 | `btn_extension` | Button | `"Extension"` | Fixed | `background='#3B82F6'`, `foreground='white'`. Click: `_confirm('extension')` |
-| `btn_cross_subject` | Button | `"Cross-subject Application"` | Fixed | `background='#F59E0B'`, `foreground='white'`. Click: `_confirm('cross_subject_application')` |
+| `btn_cross_subject` | Button | `"Application"` | Fixed | `background='#F59E0B'`, `foreground='white'`. Click: `_confirm('application')` |
 | `btn_skip` | Button | `"Skip →"` | Fixed | No colour override. Click: `_skip()` — advances to next edge without writing to DB |
 
 **Navigation row:**
@@ -454,7 +454,7 @@ One row per confirmed edge. Each is a `ColumnPanel` containing:
 | From location label | e.g. `"Y4 Spring 2 · History"` | `foreground='#64748B'` |
 | Arrow label | `"→"` | |
 | To location label | e.g. `"Y5 Autumn 1 · History"` | `foreground='#64748B'` |
-| Edge nature chip | e.g. `"reinforcement"` | Background: reinforcement=#22C55E, extension=#3B82F6, cross_subject_application=#F59E0B |
+| Edge nature chip | e.g. `"reinforcement"` | Background: reinforcement=#22C55E, extension=#3B82F6, application=#F59E0B |
 | Confirmed by label | e.g. `"Confirmed by Christine on 2026-02-28"` | `foreground='#94A3B8'`, `font_size=11` |
 
 ---
