@@ -528,10 +528,10 @@ def get_words_per_year() -> dict:
     for row in rows:
         subj = row[0]
         counts = {3: row[1] or 0, 4: row[2] or 0, 5: row[3] or 0, 6: row[4] or 0}
-        result[subj] = counts
+        result[subj] = {str(y): v for y, v in counts.items()}
         for y in [3, 4, 5, 6]:
             totals[y] += counts[y]
-    result['total'] = totals
+    result['total'] = {str(y): v for y, v in totals.items()}
 
     log.info("get_words_per_year: %s", {k: sum(v.values()) for k, v in result.items()})
     return result
