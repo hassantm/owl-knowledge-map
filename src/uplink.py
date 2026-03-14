@@ -2,7 +2,7 @@
 """
 Anvil Uplink Server — OWL Knowledge Map
 
-Persistent local process that exposes SQLite data to the Anvil web app via
+Persistent local process that exposes PostgreSQL data to the Anvil web app via
 the Anvil Uplink protocol. All business logic lives here; Anvil Server Modules
 are thin proxies only.
 
@@ -10,27 +10,31 @@ Usage:
     python src/uplink.py
 
 Requirements:
-    pip install anvil-uplink
+    pip install anvil-uplink psycopg2-binary
 
 Set ANVIL_UPLINK_KEY environment variable (or edit UPLINK_KEY below) to the
 key from: Anvil IDE → Settings → Uplink.
 
-Created: 2026-02-26
+Migrated from SQLite to PostgreSQL: 2026-03-14
+Originally created: 2026-02-26
 """
 
 import logging
 import os
-import sqlite3
 from pathlib import Path
 
 import anvil.server
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-PROJECT_ROOT = Path(__file__).parent.parent
-DB_PATH = PROJECT_ROOT / "db" / "owl_knowledge_map.db"
+PG_CONN_STRING = os.environ.get(
+    "OWL_DB_URL",
+    "dbname=owl user=htmadmin password=dev host=localhost port=5432"
+)
 
 # Uplink key — set via environment variable or replace the fallback string
 UPLINK_KEY = os.environ.get("ANVIL_UPLINK_KEY", "YOUR_UPLINK_KEY_HERE")
@@ -47,11 +51,21 @@ log = logging.getLogger(__name__)
 # DATABASE HELPERS
 # =============================================================================
 
-def get_conn() -> sqlite3.Connection:
-    """Open a read/write connection with row factory."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+def get_conn() -> psycopg2.extensions.connection:
+    """Open a read/write connection with RealDictCursor as default cursor."""
+    conn = psycopg2.connect(PG_CONN_STRING)
     return conn
+
+
+def fetchall(cursor) -> list[dict]:
+    """Return all rows as plain dicts."""
+    return [dict(r) for r in cursor.fetchall()]
+
+
+def fetchone(cursor) -> dict | None:
+    """Return one row as a plain dict, or None."""
+    row = cursor.fetchone()
+    return dict(row) if row else None
 
 
 # Issue types that appear in the audit queue — mirrors audit_terms.py categories
@@ -80,36 +94,29 @@ def get_audit_queue(
 
     Filters: subject, year, term (curriculum period), issue_type.
     Returns dict with keys: rows (list of dicts), total, page, page_size.
-
-    Created: 2026-02-26
     """
     conditions = []
     params: list = []
 
-    # Base filter — items that need review
     conditions.append(
         "(o.needs_review = 1 OR o.validation_status IN ('potential_noise', 'high_priority_review'))"
     )
 
     if subject:
-        conditions.append("o.subject = ?")
+        conditions.append("o.subject = %s")
         params.append(subject)
     if year is not None:
-        conditions.append("o.year = ?")
+        conditions.append("o.year = %s")
         params.append(int(year))
     if term:
-        conditions.append("o.term = ?")
+        conditions.append("o.term = %s")
         params.append(term)
     if issue_type:
-        # Map issue_type to DB filter
         if issue_type == 'potential_noise':
             conditions.append("o.validation_status = 'potential_noise'")
         elif issue_type == 'high_priority_review':
             conditions.append("o.validation_status = 'high_priority_review'")
         elif issue_type == 'missed_from_extraction':
-            # Missed rows: needs_review=1 but no occurrence_id in the noise categories
-            # These are stored with vocab_match_type = 'manual_add' or similar
-            # For now surface all needs_review rows not in noise/hp
             conditions.append(
                 "o.needs_review = 1 AND o.validation_status NOT IN ('potential_noise', 'high_priority_review')"
             )
@@ -145,17 +152,16 @@ def get_audit_queue(
         JOIN concepts c ON o.concept_id = c.concept_id
         WHERE {where_clause}
         ORDER BY o.subject, o.year, o.term, o.unit, c.term
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
     """
 
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(count_sql, params)
-        total = cursor.fetchone()[0]
-
-        cursor.execute(select_sql, params + [page_size, page * page_size])
-        rows = [dict(r) for r in cursor.fetchall()]
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(count_sql, params)
+            total = cursor.fetchone()["count"]
+            cursor.execute(select_sql, params + [page_size, page * page_size])
+            rows = fetchall(cursor)
     finally:
         conn.close()
 
@@ -165,19 +171,13 @@ def get_audit_queue(
 
 @anvil.server.callable
 def get_audit_stats() -> dict:
-    """
-    Return summary counts for the audit queue.
-
-    Returns: total_issues, reviewed, pending, by_validation_status dict.
-
-    Created: 2026-02-26
-    """
+    """Return summary counts for the audit queue."""
     sql = """
         SELECT
             COUNT(*)                                                        AS total_issues,
             COUNT(CASE WHEN audit_decision IS NOT NULL THEN 1 END)          AS reviewed,
             COUNT(CASE WHEN audit_decision IS NULL THEN 1 END)              AS pending,
-            COUNT(CASE WHEN validation_status = 'potential_noise' THEN 1 END)     AS potential_noise,
+            COUNT(CASE WHEN validation_status = 'potential_noise' THEN 1 END)      AS potential_noise,
             COUNT(CASE WHEN validation_status = 'high_priority_review' THEN 1 END) AS high_priority_review,
             COUNT(CASE WHEN needs_review = 1
                         AND validation_status NOT IN ('potential_noise', 'high_priority_review')
@@ -188,24 +188,20 @@ def get_audit_stats() -> dict:
     """
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        row = dict(cursor.fetchone())
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(sql)
+            row = fetchone(cursor)
     finally:
         conn.close()
 
-    log.info("get_audit_stats: total=%d reviewed=%d pending=%d",
+    log.info("get_audit_stats: total=%s reviewed=%s pending=%s",
              row['total_issues'], row['reviewed'], row['pending'])
     return row
 
 
 @anvil.server.callable
 def get_term_detail(occurrence_id: int) -> dict | None:
-    """
-    Return full occurrence record + concept term for a single occurrence.
-
-    Created: 2026-02-26
-    """
+    """Return full occurrence record + concept term for a single occurrence."""
     sql = """
         SELECT
             o.occurrence_id,
@@ -231,21 +227,19 @@ def get_term_detail(occurrence_id: int) -> dict | None:
             o.source_path
         FROM occurrences o
         JOIN concepts c ON o.concept_id = c.concept_id
-        WHERE o.occurrence_id = ?
+        WHERE o.occurrence_id = %s
     """
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(sql, (occurrence_id,))
-        row = cursor.fetchone()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(sql, (occurrence_id,))
+            row = fetchone(cursor)
     finally:
         conn.close()
 
     if not row:
         log.warning("get_term_detail: occurrence_id %d not found", occurrence_id)
-        return None
-
-    return dict(row)
+    return row
 
 
 @anvil.server.callable
@@ -255,10 +249,6 @@ def save_audit_decision(occurrence_id: int, decision: str, notes: str = None) ->
 
     Valid decisions: 'keep', 'delete', 'add', 'skip'.
     Passing decision=None clears the decision (marks as unreviewed).
-
-    Returns dict with 'ok' bool and 'message'.
-
-    Created: 2026-02-26
     """
     valid_decisions = {'keep', 'delete', 'add', 'skip', None}
     if decision not in valid_decisions:
@@ -266,18 +256,18 @@ def save_audit_decision(occurrence_id: int, decision: str, notes: str = None) ->
 
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT occurrence_id FROM occurrences WHERE occurrence_id = ?",
-            (occurrence_id,)
-        )
-        if not cursor.fetchone():
-            return {'ok': False, 'message': f"Occurrence {occurrence_id} not found."}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT occurrence_id FROM occurrences WHERE occurrence_id = %s",
+                (occurrence_id,)
+            )
+            if not cursor.fetchone():
+                return {'ok': False, 'message': f"Occurrence {occurrence_id} not found."}
 
-        cursor.execute(
-            "UPDATE occurrences SET audit_decision = ?, audit_notes = ? WHERE occurrence_id = ?",
-            (decision, notes, occurrence_id)
-        )
+            cursor.execute(
+                "UPDATE occurrences SET audit_decision = %s, audit_notes = %s WHERE occurrence_id = %s",
+                (decision, notes, occurrence_id)
+            )
         conn.commit()
     finally:
         conn.close()
@@ -294,73 +284,54 @@ def apply_pending_decisions() -> dict:
     Processes all occurrences where audit_decision IS NOT NULL:
       'keep'   → SET validation_status = 'confirmed'
       'delete' → DELETE occurrence; clean orphan concepts
-      'add'    → Not applicable here (adds come from missed_from_extraction via CSV);
-                 log as skipped with note
+      'add'    → not applicable here; logged as skipped
       'skip'   → no action
-
-    Returns summary counts dict.
-
-    Created: 2026-02-26
     """
     conn = get_conn()
-    # Use a non-row-factory connection for write operations
-    write_conn = sqlite3.connect(DB_PATH)
-    write_cursor = write_conn.cursor()
-
     counts = {'deleted': 0, 'kept': 0, 'skipped': 0, 'errors': 0, 'orphans_cleaned': 0}
 
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT o.occurrence_id, o.audit_decision, o.validation_status,
-                   c.term, o.subject, o.year, o.unit
-            FROM occurrences o
-            JOIN concepts c ON o.concept_id = c.concept_id
-            WHERE o.audit_decision IS NOT NULL
-        """)
-        rows = cursor.fetchall()
-
-        for row in rows:
-            occ_id = row[0]
-            decision = row[1]
-
-            try:
-                if decision == 'keep':
-                    write_cursor.execute(
-                        "UPDATE occurrences SET validation_status = 'confirmed' WHERE occurrence_id = ?",
-                        (occ_id,)
-                    )
-                    counts['kept'] += 1
-
-                elif decision == 'delete':
-                    write_cursor.execute(
-                        "DELETE FROM occurrences WHERE occurrence_id = ?",
-                        (occ_id,)
-                    )
-                    counts['deleted'] += 1
-
-                elif decision in ('skip', 'add'):
-                    # 'add' for missed terms is handled separately via CSV workflow;
-                    # 'skip' is a no-op
-                    counts['skipped'] += 1
-
-            except Exception as e:
-                counts['errors'] += 1
-                log.error("apply_pending_decisions: error on occurrence_id=%d: %s", occ_id, e)
-
-        # Clean orphan concepts once after all deletes
-        if counts['deleted'] > 0:
-            write_cursor.execute("""
-                DELETE FROM concepts
-                WHERE concept_id NOT IN (SELECT DISTINCT concept_id FROM occurrences)
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT o.occurrence_id, o.audit_decision
+                FROM occurrences o
+                WHERE o.audit_decision IS NOT NULL
             """)
-            counts['orphans_cleaned'] = write_cursor.rowcount
+            rows = fetchall(cursor)
 
-        write_conn.commit()
+        with conn.cursor() as cursor:
+            for row in rows:
+                occ_id = row['occurrence_id']
+                decision = row['audit_decision']
+                try:
+                    if decision == 'keep':
+                        cursor.execute(
+                            "UPDATE occurrences SET validation_status = 'confirmed' WHERE occurrence_id = %s",
+                            (occ_id,)
+                        )
+                        counts['kept'] += 1
+                    elif decision == 'delete':
+                        cursor.execute(
+                            "DELETE FROM occurrences WHERE occurrence_id = %s",
+                            (occ_id,)
+                        )
+                        counts['deleted'] += 1
+                    elif decision in ('skip', 'add'):
+                        counts['skipped'] += 1
+                except Exception as e:
+                    counts['errors'] += 1
+                    log.error("apply_pending_decisions: error on occurrence_id=%d: %s", occ_id, e)
 
+            if counts['deleted'] > 0:
+                cursor.execute("""
+                    DELETE FROM concepts
+                    WHERE concept_id NOT IN (SELECT DISTINCT concept_id FROM occurrences)
+                """)
+                counts['orphans_cleaned'] = cursor.rowcount
+
+        conn.commit()
     finally:
         conn.close()
-        write_conn.close()
 
     log.info(
         "apply_pending_decisions: deleted=%d kept=%d skipped=%d orphans=%d errors=%d",
@@ -376,15 +347,9 @@ def apply_pending_decisions() -> dict:
 
 @anvil.server.callable
 def get_adjacent_occurrence_ids(occurrence_id: int) -> dict:
-    """
-    Return prev/next occurrence_ids in the review queue for navigation.
-
-    Returns dict: {'prev': int|None, 'next': int|None}
-
-    Created: 2026-02-26
-    """
+    """Return prev/next occurrence_ids in the review queue for navigation."""
     sql = """
-        SELECT occurrence_id FROM occurrences o
+        SELECT o.occurrence_id FROM occurrences o
         JOIN concepts c ON o.concept_id = c.concept_id
         WHERE o.needs_review = 1
            OR o.validation_status IN ('potential_noise', 'high_priority_review')
@@ -392,9 +357,9 @@ def get_adjacent_occurrence_ids(occurrence_id: int) -> dict:
     """
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        ids = [r[0] for r in cursor.fetchall()]
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            ids = [r[0] for r in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -410,24 +375,18 @@ def get_adjacent_occurrence_ids(occurrence_id: int) -> dict:
 
 @anvil.server.callable
 def get_filter_options() -> dict:
-    """
-    Return distinct values for filter dropdowns: subjects, years, terms.
-
-    Created: 2026-02-26
-    """
+    """Return distinct values for filter dropdowns: subjects, years, terms."""
     conn = get_conn()
     try:
-        cursor = conn.cursor()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT DISTINCT subject FROM occurrences ORDER BY subject")
+            subjects = [r[0] for r in cursor.fetchall()]
 
-        cursor.execute("SELECT DISTINCT subject FROM occurrences ORDER BY subject")
-        subjects = [r[0] for r in cursor.fetchall()]
+            cursor.execute("SELECT DISTINCT year FROM occurrences ORDER BY year")
+            years = [r[0] for r in cursor.fetchall()]
 
-        cursor.execute("SELECT DISTINCT year FROM occurrences ORDER BY year")
-        years = [r[0] for r in cursor.fetchall()]
-
-        cursor.execute("SELECT DISTINCT term FROM occurrences ORDER BY term")
-        terms = [r[0] for r in cursor.fetchall()]
-
+            cursor.execute("SELECT DISTINCT term FROM occurrences ORDER BY term")
+            terms = [r[0] for r in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -441,48 +400,34 @@ def get_filter_options() -> dict:
 
 # =============================================================================
 # PHASE A — CORPUS BROWSER + DASHBOARD STATS
-# (Added 2026-02-26 to support BrowserForm and DashboardForm)
 # =============================================================================
 
 @anvil.server.callable
 def get_dashboard_stats() -> dict:
-    """
-    Return high-level counts for the dashboard stat cards.
-
-    Returns: concepts, occurrences, confirmed_edges, by_subject (dict).
-
-    Created: 2026-02-26
-    """
+    """Return high-level counts for the dashboard stat cards."""
     conn = get_conn()
     try:
-        cursor = conn.cursor()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM concepts")
+            concepts = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM concepts")
-        concepts = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM edges WHERE confirmed_by IS NOT NULL")
+            confirmed_edges = cursor.fetchone()[0]
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM edges WHERE confirmed_by IS NOT NULL"
-        )
-        confirmed_edges = cursor.fetchone()[0]
-
-        cursor.execute("""
-            SELECT subject, COUNT(*) AS cnt
-            FROM occurrences
-            WHERE validation_status = 'confirmed'
-            GROUP BY subject
-            ORDER BY subject
-        """)
-        by_subject = {r[0]: r[1] for r in cursor.fetchall()}
-        # Derive total from the grouped result — avoids a second scan of occurrences
-        occurrences = sum(by_subject.values())
-
+            cursor.execute("""
+                SELECT subject, COUNT(*) AS cnt
+                FROM occurrences
+                WHERE validation_status = 'confirmed'
+                GROUP BY subject
+                ORDER BY subject
+            """)
+            by_subject = {r[0]: r[1] for r in cursor.fetchall()}
+            occurrences = sum(by_subject.values())
     finally:
         conn.close()
 
-    log.info(
-        "get_dashboard_stats: concepts=%d occurrences=%d confirmed_edges=%d",
-        concepts, occurrences, confirmed_edges
-    )
+    log.info("get_dashboard_stats: concepts=%d occurrences=%d confirmed_edges=%d",
+             concepts, occurrences, confirmed_edges)
     return {
         'concepts': concepts,
         'occurrences': occurrences,
@@ -496,30 +441,24 @@ def get_words_per_year() -> dict:
     """
     Return new vocabulary introductions (is_introduction=1) per year,
     broken down by subject.
-
-    Returns a dict keyed by subject ('History', 'Geography', 'Religion'),
-    each value a dict of {year: count}.  Also includes a 'total' key with
-    cross-subject counts per year.
-
-    Added: 2026-02-28
     """
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT
-                subject,
-                sum(CASE WHEN year = 3 THEN 1 ELSE 0 END) AS y3,
-                sum(CASE WHEN year = 4 THEN 1 ELSE 0 END) AS y4,
-                sum(CASE WHEN year = 5 THEN 1 ELSE 0 END) AS y5,
-                sum(CASE WHEN year = 6 THEN 1 ELSE 0 END) AS y6
-            FROM occurrences
-            WHERE is_introduction = 1
-              AND validation_status = 'confirmed'
-            GROUP BY subject
-            ORDER BY subject
-        """)
-        rows = cursor.fetchall()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    subject,
+                    SUM(CASE WHEN year = 3 THEN 1 ELSE 0 END) AS y3,
+                    SUM(CASE WHEN year = 4 THEN 1 ELSE 0 END) AS y4,
+                    SUM(CASE WHEN year = 5 THEN 1 ELSE 0 END) AS y5,
+                    SUM(CASE WHEN year = 6 THEN 1 ELSE 0 END) AS y6
+                FROM occurrences
+                WHERE is_introduction = 1
+                  AND validation_status = 'confirmed'
+                GROUP BY subject
+                ORDER BY subject
+            """)
+            rows = cursor.fetchall()
     finally:
         conn.close()
 
@@ -546,28 +485,21 @@ def get_corpus(
     page: int = 0,
     page_size: int = 50
 ) -> dict:
-    """
-    Return a paginated list of all confirmed occurrences for the corpus browser.
-
-    Filters: subject, year, term (curriculum period), search (term LIKE).
-    Returns dict with keys: rows (list of dicts), total, page, page_size.
-
-    Created: 2026-02-26
-    """
+    """Return a paginated list of all confirmed occurrences for the corpus browser."""
     conditions = ["o.validation_status = 'confirmed'"]
     params: list = []
 
     if subject:
-        conditions.append("o.subject = ?")
+        conditions.append("o.subject = %s")
         params.append(subject)
     if year is not None:
-        conditions.append("o.year = ?")
+        conditions.append("o.year = %s")
         params.append(int(year))
     if term:
-        conditions.append("o.term = ?")
+        conditions.append("o.term = %s")
         params.append(term)
     if search:
-        conditions.append("c.term LIKE ?")
+        conditions.append("c.term ILIKE %s")
         params.append(f'%{search}%')
 
     where = ' AND '.join(conditions)
@@ -595,22 +527,22 @@ def get_corpus(
         JOIN concepts c ON o.concept_id = c.concept_id
         WHERE {where}
         ORDER BY o.year,
-                 CASE o.term WHEN 'Autumn1' THEN 1 WHEN 'Autumn2' THEN 2
-                             WHEN 'Spring1' THEN 3 WHEN 'Spring2' THEN 4
-                             WHEN 'Summer1' THEN 5 WHEN 'Summer2' THEN 6
-                             ELSE 7 END,
+                 CASE o.term
+                     WHEN 'Autumn1' THEN 1 WHEN 'Autumn2' THEN 2
+                     WHEN 'Spring1' THEN 3 WHEN 'Spring2' THEN 4
+                     WHEN 'Summer1' THEN 5 WHEN 'Summer2' THEN 6
+                     ELSE 7 END,
                  o.subject, c.term
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
     """
 
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(count_sql, params)
-        total = cursor.fetchone()[0]
-
-        cursor.execute(select_sql, params + [page_size, page * page_size])
-        rows = [dict(r) for r in cursor.fetchall()]
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(count_sql, params)
+            total = cursor.fetchone()["count"]
+            cursor.execute(select_sql, params + [page_size, page * page_size])
+            rows = fetchall(cursor)
     finally:
         conn.close()
 
@@ -619,7 +551,7 @@ def get_corpus(
 
 
 # =============================================================================
-# PHASE B — GRAPH FUNCTIONS (stubs; build when edges table has data)
+# PHASE B — GRAPH FUNCTIONS
 # =============================================================================
 
 @anvil.server.callable
@@ -629,15 +561,7 @@ def get_graph_figure(
     year_to: int = None,
     edge_type: str = None
 ) -> dict:
-    """
-    Build a Plotly network graph figure from SQLite concepts + occurrences + edges.
-
-    Returns a Plotly figure as a JSON-serialisable dict for the Anvil Plot component.
-
-    NOTE: Stub — returns empty figure until edges table is populated.
-
-    Created: 2026-02-26
-    """
+    """Build a Plotly network graph figure from concepts + occurrences + edges."""
     try:
         import networkx as nx
         import plotly.graph_objects as go
@@ -647,54 +571,49 @@ def get_graph_figure(
 
     conn = get_conn()
     try:
-        cursor = conn.cursor()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            node_sql = """
+                SELECT c.concept_id, c.term, c.subject_area, COUNT(o.occurrence_id) AS occ_count
+                FROM concepts c
+                JOIN occurrences o ON c.concept_id = o.concept_id
+                WHERE 1=1
+            """
+            node_params: list = []
+            if subject:
+                node_sql += " AND o.subject = %s"
+                node_params.append(subject)
+            if year_from is not None:
+                node_sql += " AND o.year >= %s"
+                node_params.append(int(year_from))
+            if year_to is not None:
+                node_sql += " AND o.year <= %s"
+                node_params.append(int(year_to))
+            node_sql += " GROUP BY c.concept_id"
 
-        # Node query
-        node_sql = """
-            SELECT c.concept_id, c.term, c.subject_area, COUNT(o.occurrence_id) AS occ_count
-            FROM concepts c
-            JOIN occurrences o ON c.concept_id = o.concept_id
-            WHERE 1=1
-        """
-        node_params: list = []
-        if subject:
-            node_sql += " AND o.subject = ?"
-            node_params.append(subject)
-        if year_from is not None:
-            node_sql += " AND o.year >= ?"
-            node_params.append(int(year_from))
-        if year_to is not None:
-            node_sql += " AND o.year <= ?"
-            node_params.append(int(year_to))
-        node_sql += " GROUP BY c.concept_id"
+            cursor.execute(node_sql, node_params)
+            nodes = fetchall(cursor)
 
-        cursor.execute(node_sql, node_params)
-        nodes = [dict(r) for r in cursor.fetchall()]
+            edge_sql = """
+                SELECT e.from_occurrence, e.to_occurrence, e.edge_type, e.edge_nature,
+                       ofrom.concept_id AS from_concept, oto.concept_id AS to_concept
+                FROM edges e
+                JOIN occurrences ofrom ON e.from_occurrence = ofrom.occurrence_id
+                JOIN occurrences oto ON e.to_occurrence = oto.occurrence_id
+                WHERE e.confirmed_by IS NOT NULL
+            """
+            edge_params: list = []
+            if edge_type:
+                edge_sql += " AND e.edge_type = %s"
+                edge_params.append(edge_type)
 
-        # Edge query
-        edge_sql = """
-            SELECT e.from_occurrence, e.to_occurrence, e.edge_type, e.edge_nature,
-                   ofrom.concept_id AS from_concept, oto.concept_id AS to_concept
-            FROM edges e
-            JOIN occurrences ofrom ON e.from_occurrence = ofrom.occurrence_id
-            JOIN occurrences oto ON e.to_occurrence = oto.occurrence_id
-            WHERE e.confirmed_by IS NOT NULL
-        """
-        edge_params: list = []
-        if edge_type:
-            edge_sql += " AND e.edge_type = ?"
-            edge_params.append(edge_type)
-
-        cursor.execute(edge_sql, edge_params)
-        edges = [dict(r) for r in cursor.fetchall()]
-
+            cursor.execute(edge_sql, edge_params)
+            edges = fetchall(cursor)
     finally:
         conn.close()
 
     if not nodes:
         return {}
 
-    # Build NetworkX graph
     G = nx.DiGraph()
     subject_colours = {'History': '#3B82F6', 'Geography': '#22C55E', 'Religion': '#EF4444'}
 
@@ -713,7 +632,6 @@ def get_graph_figure(
 
     pos = nx.kamada_kawai_layout(G) if len(G.nodes) > 1 else {list(G.nodes)[0]: (0, 0)}
 
-    # Edge trace
     edge_x, edge_y = [], []
     for u, v in G.edges():
         x0, y0 = pos[u]; x1, y1 = pos[v]
@@ -725,7 +643,6 @@ def get_graph_figure(
         line=dict(width=1, color='#888'), hoverinfo='none'
     )
 
-    # Node traces by subject (one trace per colour for legend)
     node_traces = []
     for subj, colour in subject_colours.items():
         subj_nodes = [n for n in nodes if n.get('subject_area') == subj and n['concept_id'] in G.nodes]
@@ -765,53 +682,46 @@ def get_graph_figure(
 
 @anvil.server.callable
 def get_concept_detail(concept_id: int) -> dict | None:
-    """
-    Return concept + all occurrences + all confirmed edges for a concept.
-
-    Created: 2026-02-26
-    """
+    """Return concept + all occurrences + all confirmed edges for a concept."""
     conn = get_conn()
     try:
-        cursor = conn.cursor()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM concepts WHERE concept_id = %s", (concept_id,))
+            concept = fetchone(cursor)
+            if not concept:
+                return None
 
-        # Concept
-        cursor.execute("SELECT * FROM concepts WHERE concept_id = ?", (concept_id,))
-        concept_row = cursor.fetchone()
-        if not concept_row:
-            return None
-        concept = dict(concept_row)
+            cursor.execute("""
+                SELECT o.*
+                FROM occurrences o
+                WHERE o.concept_id = %s
+                ORDER BY o.year,
+                         CASE o.term
+                             WHEN 'Autumn1' THEN 1 WHEN 'Autumn2' THEN 2
+                             WHEN 'Spring1' THEN 3 WHEN 'Spring2' THEN 4
+                             WHEN 'Summer1' THEN 5 WHEN 'Summer2' THEN 6
+                             ELSE 7 END,
+                         o.slide_number
+            """, (concept_id,))
+            occurrences = fetchall(cursor)
 
-        # Occurrences, sorted by curriculum order
-        term_order = "CASE o.term WHEN 'Autumn1' THEN 1 WHEN 'Autumn2' THEN 2 WHEN 'Spring1' THEN 3 WHEN 'Spring2' THEN 4 WHEN 'Summer1' THEN 5 WHEN 'Summer2' THEN 6 ELSE 7 END"
-        cursor.execute(f"""
-            SELECT o.*
-            FROM occurrences o
-            WHERE o.concept_id = ?
-            ORDER BY o.year, {term_order}, o.slide_number
-        """, (concept_id,))
-        occurrences = [dict(r) for r in cursor.fetchall()]
-
-        occ_ids = [o['occurrence_id'] for o in occurrences]
-
-        # Edges involving this concept's occurrences
-        if occ_ids:
-            placeholders = ','.join('?' * len(occ_ids))
-            cursor.execute(f"""
-                SELECT e.*, c_from.term AS from_term, c_to.term AS to_term,
-                       ofrom.year AS from_year, ofrom.term AS from_term_period, ofrom.unit AS from_unit,
-                       oto.year AS to_year, oto.term AS to_term_period, oto.unit AS to_unit
-                FROM edges e
-                JOIN occurrences ofrom ON e.from_occurrence = ofrom.occurrence_id
-                JOIN occurrences oto ON e.to_occurrence = oto.occurrence_id
-                JOIN concepts c_from ON ofrom.concept_id = c_from.concept_id
-                JOIN concepts c_to ON oto.concept_id = c_to.concept_id
-                WHERE e.from_occurrence IN ({placeholders})
-                   OR e.to_occurrence IN ({placeholders})
-            """, occ_ids + occ_ids)
-            edges = [dict(r) for r in cursor.fetchall()]
-        else:
-            edges = []
-
+            occ_ids = [o['occurrence_id'] for o in occurrences]
+            if occ_ids:
+                cursor.execute("""
+                    SELECT e.*, c_from.term AS from_term, c_to.term AS to_term,
+                           ofrom.year AS from_year, ofrom.term AS from_term_period, ofrom.unit AS from_unit,
+                           oto.year AS to_year, oto.term AS to_term_period, oto.unit AS to_unit
+                    FROM edges e
+                    JOIN occurrences ofrom ON e.from_occurrence = ofrom.occurrence_id
+                    JOIN occurrences oto ON e.to_occurrence = oto.occurrence_id
+                    JOIN concepts c_from ON ofrom.concept_id = c_from.concept_id
+                    JOIN concepts c_to ON oto.concept_id = c_to.concept_id
+                    WHERE e.from_occurrence = ANY(%s)
+                       OR e.to_occurrence = ANY(%s)
+                """, (occ_ids, occ_ids))
+                edges = fetchall(cursor)
+            else:
+                edges = []
     finally:
         conn.close()
 
@@ -820,39 +730,29 @@ def get_concept_detail(concept_id: int) -> dict | None:
 
 @anvil.server.callable
 def get_load_bearing_concepts(min_occurrences: int = 2) -> list[dict]:
-    """
-    Return concepts with min_occurrences or more, sorted by occurrence count.
-
-    These are the entry points for the edge confirmation workflow.
-    Each row includes: concept_id, term, subject_area, occ_count,
-    subjects (comma-separated), first_year, last_year.
-
-    Created: 2026-02-26
-    """
+    """Return concepts with min_occurrences or more, sorted by occurrence count."""
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT c.concept_id, c.term, c.subject_area,
-                   COUNT(*) AS occ_count,
-                   GROUP_CONCAT(DISTINCT o.subject)  AS subjects,
-                   MIN(o.year) AS first_year,
-                   MAX(o.year) AS last_year
-            FROM concepts c
-            JOIN occurrences o ON c.concept_id = o.concept_id
-            WHERE o.validation_status = 'confirmed'
-            GROUP BY c.concept_id
-            HAVING COUNT(*) >= ?
-            ORDER BY occ_count DESC, c.term
-        """, (min_occurrences,))
-        rows = [dict(r) for r in cursor.fetchall()]
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT c.concept_id, c.term, c.subject_area,
+                       COUNT(*) AS occ_count,
+                       STRING_AGG(DISTINCT o.subject, ',')  AS subjects,
+                       MIN(o.year) AS first_year,
+                       MAX(o.year) AS last_year
+                FROM concepts c
+                JOIN occurrences o ON c.concept_id = o.concept_id
+                WHERE o.validation_status = 'confirmed'
+                GROUP BY c.concept_id
+                HAVING COUNT(*) >= %s
+                ORDER BY occ_count DESC, c.term
+            """, (min_occurrences,))
+            rows = fetchall(cursor)
     finally:
         conn.close()
 
-    log.info(
-        "get_load_bearing_concepts: %d concepts with >= %d occurrences",
-        len(rows), min_occurrences
-    )
+    log.info("get_load_bearing_concepts: %d concepts with >= %d occurrences",
+             len(rows), min_occurrences)
     return rows
 
 
@@ -864,26 +764,12 @@ def get_candidate_edges_list(
     page: int = 0,
     page_size: int = 50
 ) -> dict:
-    """
-    Return paginated candidate edges for the edge confirmation review workflow.
-
-    Filters:
-      subject          — match on either from_subject or to_subject
-      edge_type        — 'within_subject' or 'cross_subject'
-      include_confirmed — if True, include already-confirmed pairs
-
-    Imports graph_builder on first call (adds ~50 ms once).
-
-    Returns dict: rows, total, page, page_size.
-
-    Created: 2026-02-26
-    """
+    """Return paginated candidate edges for the edge confirmation review workflow."""
     import sys
-    from pathlib import Path as _Path
-    sys.path.insert(0, str(_Path(__file__).parent))
+    sys.path.insert(0, str(Path(__file__).parent))
     from graph_builder import get_candidate_edges
 
-    candidates = get_candidate_edges(DB_PATH)
+    candidates = get_candidate_edges(PG_CONN_STRING)
 
     if not include_confirmed:
         candidates = [c for c in candidates if not c['already_confirmed']]
@@ -898,9 +784,7 @@ def get_candidate_edges_list(
     total = len(candidates)
     paged = candidates[page * page_size: (page + 1) * page_size]
 
-    log.info(
-        "get_candidate_edges_list: %d/%d (page %d)", len(paged), total, page
-    )
+    log.info("get_candidate_edges_list: %d/%d (page %d)", len(paged), total, page)
     return {'rows': paged, 'total': total, 'page': page, 'page_size': page_size}
 
 
@@ -916,14 +800,7 @@ def confirm_edge(
     Write a confirmed edge to the edges table.
 
     edge_nature: 'reinforcement' | 'extension' | 'application'
-    confirmed_by: reviewer's name (required)
-    edge_type: auto-detected from subject match if not supplied
-
     Idempotent — updates existing edge if the pair already exists.
-
-    Returns dict: {'ok': bool, 'edge_id': int|None, 'message': str}
-
-    Created: 2026-02-26
     """
     from datetime import date
 
@@ -931,79 +808,73 @@ def confirm_edge(
     if edge_nature not in valid_natures:
         return {
             'ok': False,
-            'message': (
-                f"Invalid edge_nature '{edge_nature}'. "
-                f"Use: reinforcement, extension, application"
-            ),
+            'message': f"Invalid edge_nature '{edge_nature}'. Use: reinforcement, extension, application",
         }
     if not confirmed_by or not confirmed_by.strip():
         return {'ok': False, 'message': "confirmed_by must not be empty."}
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
-        cursor = conn.cursor()
-
-        # Validate occurrences exist and get their subjects
-        cursor.execute(
-            "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = ?",
-            (from_occurrence_id,)
-        )
-        fr_row = cursor.fetchone()
-        cursor.execute(
-            "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = ?",
-            (to_occurrence_id,)
-        )
-        to_row = cursor.fetchone()
-
-        if not fr_row:
-            return {'ok': False, 'message': f"from_occurrence_id {from_occurrence_id} not found."}
-        if not to_row:
-            return {'ok': False, 'message': f"to_occurrence_id {to_occurrence_id} not found."}
-
-        if not edge_type:
-            edge_type = (
-                'within_subject' if fr_row[1] == to_row[1] else 'cross_subject'
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = %s",
+                (from_occurrence_id,)
             )
+            fr_row = fetchone(cursor)
+            cursor.execute(
+                "SELECT occurrence_id, subject FROM occurrences WHERE occurrence_id = %s",
+                (to_occurrence_id,)
+            )
+            to_row = fetchone(cursor)
 
-        today = date.today().isoformat()
+            if not fr_row:
+                return {'ok': False, 'message': f"from_occurrence_id {from_occurrence_id} not found."}
+            if not to_row:
+                return {'ok': False, 'message': f"to_occurrence_id {to_occurrence_id} not found."}
 
-        # Idempotent upsert
-        cursor.execute(
-            "SELECT edge_id FROM edges WHERE from_occurrence=? AND to_occurrence=?",
-            (from_occurrence_id, to_occurrence_id)
-        )
-        existing = cursor.fetchone()
+            if not edge_type:
+                edge_type = (
+                    'within_subject' if fr_row['subject'] == to_row['subject']
+                    else 'cross_subject'
+                )
 
-        if existing:
-            cursor.execute("""
-                UPDATE edges
-                SET edge_type=?, edge_nature=?, confirmed_by=?, confirmed_date=?
-                WHERE edge_id=?
-            """, (edge_type, edge_nature, confirmed_by.strip(), today, existing[0]))
-            edge_id = existing[0]
-            action = 'updated'
-        else:
-            cursor.execute("""
-                INSERT INTO edges (
-                    from_occurrence, to_occurrence,
-                    edge_type, edge_nature, confirmed_by, confirmed_date
-                ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                from_occurrence_id, to_occurrence_id,
-                edge_type, edge_nature, confirmed_by.strip(), today
-            ))
-            edge_id = cursor.lastrowid
-            action = 'inserted'
+            today = date.today().isoformat()
+
+            cursor.execute(
+                "SELECT edge_id FROM edges WHERE from_occurrence = %s AND to_occurrence = %s",
+                (from_occurrence_id, to_occurrence_id)
+            )
+            existing = fetchone(cursor)
+
+            if existing:
+                cursor.execute("""
+                    UPDATE edges
+                    SET edge_type = %s, edge_nature = %s, confirmed_by = %s, confirmed_date = %s
+                    WHERE edge_id = %s
+                """, (edge_type, edge_nature, confirmed_by.strip(), today, existing['edge_id']))
+                edge_id = existing['edge_id']
+                action = 'updated'
+            else:
+                cursor.execute("""
+                    INSERT INTO edges (
+                        from_occurrence, to_occurrence,
+                        edge_type, edge_nature, confirmed_by, confirmed_date
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING edge_id
+                """, (
+                    from_occurrence_id, to_occurrence_id,
+                    edge_type, edge_nature, confirmed_by.strip(), today
+                ))
+                edge_id = cursor.fetchone()['edge_id']
+                action = 'inserted'
 
         conn.commit()
     finally:
         conn.close()
 
-    log.info(
-        "confirm_edge: %s edge_id=%d %d→%d nature=%s by=%s",
-        action, edge_id, from_occurrence_id, to_occurrence_id,
-        edge_nature, confirmed_by,
-    )
+    log.info("confirm_edge: %s edge_id=%d %d→%d nature=%s by=%s",
+             action, edge_id, from_occurrence_id, to_occurrence_id,
+             edge_nature, confirmed_by)
     return {
         'ok': True,
         'edge_id': edge_id,
@@ -1012,40 +883,34 @@ def confirm_edge(
 
 
 # =============================================================================
-# PHASE C — PAGE VIEW (stub; build when render_pages.py has run)
+# PHASE C — PAGE VIEW (stub)
 # =============================================================================
 
 @anvil.server.callable
 def get_page_image(occurrence_id: int):
     """
     Return the rendered booklet page as an Anvil media object.
-
-    Requires occurrences.page_image_path to be populated by render_pages.py.
-    Returns None if not yet available.
-
-    Created: 2026-02-26
+    Returns None if page_image_path is not yet populated.
     """
     import anvil.media
 
     conn = get_conn()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT page_image_path FROM occurrences WHERE occurrence_id = ?",
-            (occurrence_id,)
-        )
-        row = cursor.fetchone()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT source_path FROM occurrences WHERE occurrence_id = %s",
+                (occurrence_id,)
+            )
+            row = cursor.fetchone()
     finally:
         conn.close()
 
-    # Column may not exist yet (render_pages.py not yet run)
     if not row:
         log.warning("get_page_image: occurrence_id %d not found", occurrence_id)
         return None
 
-    page_image_path = row[0] if row[0] else None
+    page_image_path = row[0]
     if not page_image_path:
-        log.info("get_page_image: no page_image_path for occurrence_id %d (run render_pages.py)", occurrence_id)
         return None
 
     img_path = Path(page_image_path)
@@ -1067,13 +932,8 @@ def main() -> None:
         print("  python src/uplink.py")
         return
 
-    if not DB_PATH.exists():
-        print(f"ERROR: Database not found at {DB_PATH}")
-        print("Run: python src/init_db.py")
-        return
-
     log.info("Connecting to Anvil uplink...")
-    log.info("Database: %s", DB_PATH)
+    log.info("Database: %s", PG_CONN_STRING)
     anvil.server.connect(UPLINK_KEY)
     log.info("Uplink connected. Waiting for calls...")
     anvil.server.wait_forever()
