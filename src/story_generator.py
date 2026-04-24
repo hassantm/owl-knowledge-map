@@ -17,13 +17,15 @@ import sys
 
 import anthropic
 import psycopg2.extras
+from pathlib import Path
+
 from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / '.env', override=True)
 
 from db import get_connection
 from story_context import StoryPackRequest, assemble_context
 from story_qa import fact_check_story, score_story_rubric
-
-load_dotenv()
 
 client = anthropic.Anthropic()
 

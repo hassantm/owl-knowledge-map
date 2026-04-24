@@ -17,13 +17,15 @@ import argparse
 import sys
 import time
 
+from pathlib import Path
+
 from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / '.env', override=True)
 
 from db import get_connection
 from story_context import StoryPackRequest
 from story_generator import generate_story_pack
-
-load_dotenv()
 
 
 def get_ready_units() -> list[dict]:

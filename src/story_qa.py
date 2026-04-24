@@ -12,9 +12,11 @@ Results are stored in generated_story_packs.fact_check_results and .rubric_score
 import json
 
 import anthropic
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / '.env', override=True)
 
 client = anthropic.Anthropic()
 
