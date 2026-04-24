@@ -183,8 +183,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Batch-ingest lesson and booklet content for all curriculum units",
     )
-    parser.add_argument("--dropbox-root", required=True,
-                        help='Path to the "Haringey Counsell Shared Items" folder')
+    parser.add_argument("--dropbox-root", required=True, action="append", dest="dropbox_roots",
+                        metavar="PATH",
+                        help="Subject root folder (e.g. 'HEP History/'). Can be repeated.")
     parser.add_argument("--model",    default="claude-sonnet-4-6")
     parser.add_argument("--force",    action="store_true",
                         help="Re-ingest even if content is already present")
@@ -197,12 +198,13 @@ def main():
                              "Use find_story_icon.py to extract from a known story slide.")
     args = parser.parse_args()
 
-    root = Path(args.dropbox_root)
-    if not root.exists():
-        print(f"ERROR: dropbox root not found: {root}")
-        return 1
-
-    unit_folders = find_unit_folders(root)
+    unit_folders = []
+    for root_str in args.dropbox_roots:
+        root = Path(root_str)
+        if not root.exists():
+            print(f"ERROR: path not found: {root}")
+            return 1
+        unit_folders.extend(find_unit_folders(root))
     if not unit_folders:
         print("No unit folders found. Check the --dropbox-root path.")
         return 1
