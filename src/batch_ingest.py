@@ -35,15 +35,20 @@ from db import get_connection
 load_dotenv()
 
 SUBJECT_MAP = {
-    "Hist":  "History",
-    "Geog":  "Geography",
-    "Relig": "Religion",
+    "hist":     "History",
+    "history":  "History",
+    "geog":     "Geography",
+    "geography":"Geography",
+    "relig":    "Religion",
+    "religion": "Religion",
+    "re":       "Religion",
 }
 
 # Matches: Y5 Hist Autumn 1 Baghdad
+#          Y3 Religion Autumn 1 Hindu Stories_I Rama and Sita
 #          Y4 Geog Spring 2 Climate and Biomes
 _UNIT_FOLDER_RE = re.compile(
-    r"^Y(\d+)\s+(Hist|Geog|Relig)\s+(Autumn|Spring|Summer)\s+(\d+)\s+(.+)$",
+    r"^Y(\d+)\s+(Hist(?:ory)?|Geog(?:raphy)?|Relig(?:ion)?|RE)\s+(Autumn|Spring|Summer)\s+(\d+)\s+(.+)$",
     re.IGNORECASE,
 )
 
@@ -56,7 +61,7 @@ def parse_unit_folder(name: str) -> dict | None:
     year, subj_abbr, term_word, term_num, unit_name = m.groups()
     return {
         "year":    int(year),
-        "subject": SUBJECT_MAP.get(subj_abbr.capitalize(), subj_abbr),
+        "subject": SUBJECT_MAP.get(subj_abbr.lower(), subj_abbr),
         "term":    f"{term_word.capitalize()}{term_num}",
         "unit":    unit_name.strip(),
     }
