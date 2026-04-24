@@ -125,24 +125,16 @@ def _slide_notes(slide) -> str:
     return ""
 
 
-def extract_lesson_content(pptx_path: str, model: str) -> dict:
+def _extract_slides_from_pptx(pptx_path: str, model: str, start_index: int = 1) -> tuple[dict, int]:
     """
-    Extract lesson PPTX into structured JSONB dict.
-
-    Each slide entry includes:
-      text           — visible slide text (title + body, newline-separated)
-      notes          — speaker notes
-      token_count    — token count for text + notes combined
-      story_slide    — True if this is a story-telling slide
-      source_pages   — booklet page numbers referenced in notes (story slides only)
-      vocabulary_notes — terms flagged for embedding naturally (story slides only)
-      animation_notes  — visual/animation instruction from notes (if present)
+    Extract slides from a single PPTX file, numbering from start_index.
+    Returns (slides dict, total_tokens).
     """
     prs = Presentation(pptx_path)
     slides = {}
     total_tokens = 0
 
-    for i, slide in enumerate(prs.slides, start=1):
+    for i, slide in enumerate(prs.slides, start=start_index):
         title = _slide_title(slide)
         body  = _slide_body_text(slide)
         notes = _slide_notes(slide)
@@ -163,14 +155,52 @@ def extract_lesson_content(pptx_path: str, model: str) -> dict:
         }
 
         if is_story:
-            entry["source_pages"]      = parse_source_pages(notes)
-            entry["vocabulary_notes"]  = parse_vocabulary_notes(notes)
+            entry["source_pages"]     = parse_source_pages(notes)
+            entry["vocabulary_notes"] = parse_vocabulary_notes(notes)
 
         anim = parse_animation_notes(notes)
         if anim:
             entry["animation_notes"] = anim
 
         slides[str(i)] = entry
+
+    return slides, total_tokens
+
+
+def extract_lesson_content(pptx_path: str, model: str) -> dict:
+    """
+    Extract lesson content into structured JSONB dict.
+
+    pptx_path may be a single .pptx file or a directory containing multiple
+    .pptx files. If a directory, all .pptx files are processed in alphabetical
+    order with continuous slide numbering across files.
+
+    Each slide entry includes:
+      text             — visible slide text (title + body, newline-separated)
+      notes            — speaker notes
+      token_count      — token count for text + notes combined
+      story_slide      — True if this is a story-telling slide
+      source_pages     — booklet page numbers referenced in notes (story slides only)
+      vocabulary_notes — terms flagged for embedding naturally (story slides only)
+      animation_notes  — visual/animation instruction from notes (if present)
+    """
+    path = Path(pptx_path)
+    if path.is_dir():
+        pptx_files = sorted(path.glob("*.pptx"))
+        if not pptx_files:
+            raise ValueError(f"No .pptx files found in {pptx_path}")
+    else:
+        pptx_files = [path]
+
+    slides = {}
+    total_tokens = 0
+    next_index = 1
+
+    for pptx_file in pptx_files:
+        file_slides, file_tokens = _extract_slides_from_pptx(str(pptx_file), model, next_index)
+        slides.update(file_slides)
+        total_tokens += file_tokens
+        next_index += len(file_slides)
 
     story_count = sum(1 for s in slides.values() if s["story_slide"])
 
@@ -322,12 +352,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Ingest lesson PPTX for Baghdad (unit_id=35)
+  # Ingest lesson from a single PPTX
   python content_ingestion.py --unit-id 35 --lesson /path/to/Y5_Baghdad_Lesson.pptx
+
+  # Ingest lesson from a directory of PPTXs (processed alphabetically)
+  python content_ingestion.py --unit-id 35 --lesson /path/to/Baghdad/Lessons/
 
   # Ingest both lesson and booklet in one pass
   python content_ingestion.py --unit-id 35 \\
-    --lesson  /path/to/Y5_Baghdad_Lesson.pptx \\
+    --lesson  /path/to/Baghdad/Lessons/ \\
     --booklet /path/to/Y5_Baghdad_Booklet.pptx
 
   # Dry run — extract and print stats without writing to DB
@@ -338,7 +371,7 @@ Examples:
         """,
     )
     parser.add_argument("--unit-id",  type=int, required=True, help="units.unit_id")
-    parser.add_argument("--lesson",   help="Path to lesson PPTX")
+    parser.add_argument("--lesson",   help="Path to lesson PPTX, or directory containing multiple lesson PPTXs")
     parser.add_argument("--booklet",  help="Path to booklet PPTX")
     parser.add_argument("--model",    default="claude-sonnet-4-6",
                         help="Tokenizer model (default: claude-sonnet-4-6)")
@@ -372,6 +405,13 @@ Examples:
         parser.error("Provide at least one of --lesson or --booklet")
 
     if args.lesson:
+        p = Path(args.lesson)
+        if not p.exists():
+            print(f"ERROR: lesson path not found: {args.lesson}")
+            return 1
+        if p.is_dir() and not list(p.glob("*.pptx")):
+            print(f"ERROR: no .pptx files found in {args.lesson}")
+            return 1
         ingest_lesson(args.lesson, args.unit_id, args.model, dry_run=args.dry_run)
 
     if args.booklet:
