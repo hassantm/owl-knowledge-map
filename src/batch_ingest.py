@@ -127,7 +127,8 @@ def find_lesson_dir(unit_dir: Path) -> Path | None:
 
 
 def ingest_unit(unit_dir: Path, unit_id: int, meta: dict, model: str,
-                force: bool, dry_run: bool) -> dict:
+                force: bool, dry_run: bool,
+                story_icon_hashes: set[str] | None = None) -> dict:
     """
     Ingest lesson and booklet for one unit. Returns a status dict.
     """
@@ -150,7 +151,8 @@ def ingest_unit(unit_dir: Path, unit_id: int, meta: dict, model: str,
             status["skipped"].append("lesson (already ingested, use --force to re-ingest)")
         else:
             try:
-                ingest_lesson(str(lesson_dir), unit_id, model, dry_run=dry_run)
+                ingest_lesson(str(lesson_dir), unit_id, model, dry_run=dry_run,
+                              story_icon_hashes=story_icon_hashes)
                 status["lesson"] = str(lesson_dir.name)
             except Exception as e:
                 status["errors"].append(f"lesson: {e}")
@@ -184,6 +186,10 @@ def main():
     parser.add_argument("--dry-run",  action="store_true",
                         help="Parse and report without writing to the database")
     parser.add_argument("--unit",     help="Only process units whose name contains this string")
+    parser.add_argument("--story-icon-hash", action="append", dest="story_icon_hashes",
+                        metavar="MD5",
+                        help="MD5 hash of the story icon (can repeat). "
+                             "Use find_story_icon.py to extract from a known story slide.")
     args = parser.parse_args()
 
     root = Path(args.dropbox_root)
@@ -202,6 +208,7 @@ def main():
     unit_folders.sort(key=lambda p: p.name)
     print(f"Found {len(unit_folders)} unit folder(s)\n")
 
+    icon_hashes = set(args.story_icon_hashes) if args.story_icon_hashes else None
     ok, skipped, failed, unmatched = [], [], [], []
 
     for unit_dir in unit_folders:
@@ -216,7 +223,8 @@ def main():
         print(f"  [{meta['subject']} Y{meta['year']} {meta['term']}] {meta['unit']} "
               f"(unit_id={unit_id})")
 
-        status = ingest_unit(unit_dir, unit_id, meta, args.model, args.force, args.dry_run)
+        status = ingest_unit(unit_dir, unit_id, meta, args.model, args.force, args.dry_run,
+                             icon_hashes)
 
         for s in status["skipped"]:
             print(f"    skip: {s}")
