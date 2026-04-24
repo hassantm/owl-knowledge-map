@@ -77,9 +77,34 @@ def count_tokens(text: str, model: str) -> int:
     return response.input_tokens
 
 
-def detect_story_slide(title: str, notes: str) -> bool:
-    combined = (title or "") + " " + (notes or "")
-    return bool(_STORY_RE.search(combined))
+def _normalise_text(text: str) -> str:
+    """Normalise curly/smart quotes to plain ASCII so regex matches reliably."""
+    return (text
+            .replace("\u2018", "'").replace("\u2019", "'")
+            .replace("\u201c", '"').replace("\u201d", '"'))
+
+
+def detect_story_slide(title: str, notes: str, story_icon_hashes: set[str] | None = None,
+                       slide=None) -> bool:
+    combined = _normalise_text((title or "") + " " + (notes or ""))
+    if _STORY_RE.search(combined):
+        return True
+    if story_icon_hashes and slide is not None:
+        return _slide_has_story_icon(slide, story_icon_hashes)
+    return False
+
+
+def _slide_has_story_icon(slide, story_icon_hashes: set[str]) -> bool:
+    """Return True if any picture shape on the slide matches a known story icon hash."""
+    import hashlib
+    from pptx.util import Pt
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    for shape in slide.shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            h = hashlib.md5(shape.image.blob).hexdigest()
+            if h in story_icon_hashes:
+                return True
+    return False
 
 
 def parse_source_pages(notes: str) -> list[int]:
@@ -125,7 +150,8 @@ def _slide_notes(slide) -> str:
     return ""
 
 
-def _extract_slides_from_pptx(pptx_path: str, model: str, start_index: int = 1) -> tuple[dict, int]:
+def _extract_slides_from_pptx(pptx_path: str, model: str, start_index: int = 1,
+                               story_icon_hashes: set[str] | None = None) -> tuple[dict, int]:
     """
     Extract slides from a single PPTX file, numbering from start_index.
     Returns (slides dict, total_tokens).
@@ -145,7 +171,7 @@ def _extract_slides_from_pptx(pptx_path: str, model: str, start_index: int = 1) 
         token_count = count_tokens(combined, model)
         total_tokens += token_count
 
-        is_story = detect_story_slide(title, notes)
+        is_story = detect_story_slide(title, notes, story_icon_hashes, slide)
 
         entry: dict = {
             "text":        text,
@@ -167,7 +193,8 @@ def _extract_slides_from_pptx(pptx_path: str, model: str, start_index: int = 1) 
     return slides, total_tokens
 
 
-def extract_lesson_content(pptx_path: str, model: str) -> dict:
+def extract_lesson_content(pptx_path: str, model: str,
+                           story_icon_hashes: set[str] | None = None) -> dict:
     """
     Extract lesson content into structured JSONB dict.
 
@@ -197,7 +224,9 @@ def extract_lesson_content(pptx_path: str, model: str) -> dict:
     next_index = 1
 
     for pptx_file in pptx_files:
-        file_slides, file_tokens = _extract_slides_from_pptx(str(pptx_file), model, next_index)
+        file_slides, file_tokens = _extract_slides_from_pptx(
+            str(pptx_file), model, next_index, story_icon_hashes
+        )
         slides.update(file_slides)
         total_tokens += file_tokens
         next_index += len(file_slides)
@@ -268,13 +297,14 @@ def _write_unit_content(unit_id: int, content: dict, document_type: str, model: 
 
 
 def ingest_lesson(pptx_path: str, unit_id: int, model: str = "claude-sonnet-4-6",
-                  dry_run: bool = False) -> dict:
+                  dry_run: bool = False,
+                  story_icon_hashes: set[str] | None = None) -> dict:
     """
     Extract and store lesson content for a unit.
     Returns the content dict (whether or not dry_run).
     """
     print(f"Extracting lesson: {Path(pptx_path).name}")
-    content = extract_lesson_content(pptx_path, model)
+    content = extract_lesson_content(pptx_path, model, story_icon_hashes)
 
     story_slides = content["story_slide_count"]
     print(f"  {content['slide_count']} slides, {story_slides} story slide(s), "
@@ -379,6 +409,10 @@ Examples:
                         help="Extract and print stats without writing to database")
     parser.add_argument("--status",   action="store_true",
                         help="Print current content status for the unit and exit")
+    parser.add_argument("--story-icon-hash", action="append", dest="story_icon_hashes",
+                        metavar="MD5",
+                        help="MD5 hash of the story icon image (can be repeated). "
+                             "Use find_story_icon.py to extract hashes from a known story slide.")
     args = parser.parse_args()
 
     if args.status:
@@ -404,6 +438,8 @@ Examples:
     if not args.lesson and not args.booklet:
         parser.error("Provide at least one of --lesson or --booklet")
 
+    icon_hashes = set(args.story_icon_hashes) if args.story_icon_hashes else None
+
     if args.lesson:
         p = Path(args.lesson)
         if not p.exists():
@@ -412,7 +448,8 @@ Examples:
         if p.is_dir() and not list(p.glob("*.pptx")):
             print(f"ERROR: no .pptx files found in {args.lesson}")
             return 1
-        ingest_lesson(args.lesson, args.unit_id, args.model, dry_run=args.dry_run)
+        ingest_lesson(args.lesson, args.unit_id, args.model, dry_run=args.dry_run,
+                      story_icon_hashes=icon_hashes)
 
     if args.booklet:
         ingest_booklet(args.booklet, args.unit_id, args.model, dry_run=args.dry_run)
