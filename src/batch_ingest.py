@@ -106,8 +106,14 @@ def find_unit_folders(dropbox_root: Path) -> list[Path]:
 
 
 def find_booklet(unit_dir: Path) -> Path | None:
-    """Find the booklet PPTX directly inside the unit folder."""
-    matches = list(unit_dir.glob("*Booklet*.pptx"))
+    """Find the booklet PPTX inside the *Booklet* subfolder."""
+    booklet_dirs = [
+        p for p in unit_dir.iterdir()
+        if p.is_dir() and "booklet" in p.name.lower()
+    ]
+    if not booklet_dirs:
+        return None
+    matches = list(booklet_dirs[0].glob("*.pptx"))
     return matches[0] if len(matches) == 1 else None
 
 
