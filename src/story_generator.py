@@ -189,7 +189,7 @@ def _extract_json(text: str) -> dict | None:
         return None
 
 
-def generate_story_pack(request: StoryPackRequest, max_tokens: int = 4000,
+def generate_story_pack(request: StoryPackRequest, max_tokens: int = 8000,
                         run_qa: bool = True) -> dict:
     """
     Full pipeline: assemble context → generate → QA → persist.
@@ -269,7 +269,7 @@ def main():
     parser.add_argument("--year",       type=int, required=True)
     parser.add_argument("--budget",     type=int, default=8000,
                         help="Context token budget (default 8000)")
-    parser.add_argument("--max-tokens", type=int, default=4000,
+    parser.add_argument("--max-tokens", type=int, default=8000,
                         help="Max output tokens (default 4000)")
     parser.add_argument("--model",      default="claude-sonnet-4-6")
     parser.add_argument("--no-qa",      action="store_true",

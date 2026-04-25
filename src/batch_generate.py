@@ -81,7 +81,7 @@ def main():
                         help="Show which units would be processed without calling the API")
     parser.add_argument("--model",      default="claude-sonnet-4-6")
     parser.add_argument("--budget",     type=int, default=8000)
-    parser.add_argument("--max-tokens", type=int, default=4000)
+    parser.add_argument("--max-tokens", type=int, default=8000)
     args = parser.parse_args()
 
     units = get_ready_units()
