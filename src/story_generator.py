@@ -271,7 +271,7 @@ def main():
                         help="Context token budget (default 8000)")
     parser.add_argument("--max-tokens", type=int, default=8000,
                         help="Max output tokens (default 4000)")
-    parser.add_argument("--model",      default="claude-sonnet-4-6")
+    parser.add_argument("--model",      default="claude-opus-4-7")
     parser.add_argument("--no-qa",      action="store_true",
                         help="Skip fact-check and rubric scoring passes")
     parser.add_argument("--dry-run",    action="store_true",

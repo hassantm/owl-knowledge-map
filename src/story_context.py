@@ -30,7 +30,7 @@ class StoryPackRequest:
     unit_id:               int
     year:                  int
     context_budget_tokens: int  = 8000
-    model:                 str  = "claude-sonnet-4-6"
+    model:                 str  = "claude-opus-4-7"
 
 
 def get_story_slide_data(unit_id: int) -> list[dict]:
