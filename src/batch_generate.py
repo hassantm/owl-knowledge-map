@@ -45,6 +45,16 @@ def get_ready_units() -> list[dict]:
         conn.close()
 
 
+def _delete_existing(unit_id: int) -> None:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM generated_story_packs WHERE unit_id = %s", (unit_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def already_generated(unit_id: int) -> bool:
     """Return True if a story pack already exists for this unit."""
     conn = get_connection()
@@ -82,6 +92,8 @@ def main():
         if not args.force and already_generated(u["unit_id"]):
             print(f"  skip  {u['subject']} Y{u['year']} {u['term']} {u['unit']}")
         else:
+            if args.force:
+                _delete_existing(u["unit_id"])
             to_run.append(u)
             print(f"  queue {u['subject']} Y{u['year']} {u['term']} {u['unit']}")
 
