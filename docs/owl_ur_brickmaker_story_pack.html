@@ -1,0 +1,167 @@
+<style>
+.sp-wrap{font-family:var(--font-sans);max-width:680px;margin:0 auto;padding:0.5rem 0 2rem;}
+.sp-header{border-bottom:0.5px solid var(--color-border-tertiary);padding-bottom:1rem;margin-bottom:1.5rem;}
+.sp-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:0.75rem;}
+.sp-badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;}
+.sp-badge-year{background:#FAEEDA;color:#633806;}
+.sp-badge-sub{background:#E1F5EE;color:#085041;}
+.sp-badge-chapter{background:#EEEDFE;color:#3C3489;}
+.sp-badge-source{background:#E6F1FB;color:#0C447C;font-size:10px;}
+.sp-title{font-family:var(--font-serif);font-size:22px;font-weight:500;color:var(--color-text-primary);margin:0 0 0.25rem;}
+.sp-subtitle{font-size:13px;color:var(--color-text-secondary);margin:0;}
+.section-label{font-size:10px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-text-tertiary);margin:0 0 0.75rem;}
+.source-note{font-size:11px;color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:0.5rem 0.75rem;margin-bottom:1.25rem;border-left:2px solid #B5D4F4;}
+.vocab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:1.75rem;}
+.vocab-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:0.75rem 1rem;border:0.5px solid var(--color-border-tertiary);}
+.vocab-word{font-family:var(--font-serif);font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0 0 2px;}
+.vocab-pron{font-size:11px;color:#BA7517;font-style:italic;margin:0 0 6px;}
+.vocab-def{font-size:12px;color:var(--color-text-secondary);line-height:1.5;margin:0 0 6px;}
+.vocab-ex{font-size:11px;color:var(--color-text-tertiary);line-height:1.4;border-left:2px solid #FAC775;padding-left:8px;margin:0;}
+.story-box{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1.5rem;margin-bottom:1rem;}
+.story-box+.story-box{margin-top:0;}
+.slide-marker{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:500;color:#0C447C;background:#E6F1FB;border-radius:3px;padding:2px 8px;margin-bottom:1rem;}
+.story-title{font-family:var(--font-serif);font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0 0 1.25rem;padding-bottom:0.75rem;border-bottom:0.5px solid var(--color-border-tertiary);}
+.story-body{font-family:var(--font-serif);font-size:15px;line-height:1.85;color:var(--color-text-primary);}
+.story-body p{margin:0 0 1rem;}
+.story-body p:last-child{margin:0;}
+.ann{display:inline-block;font-family:var(--font-sans);font-size:10px;font-weight:500;letter-spacing:0.04em;background:#E1F5EE;color:#085041;border-radius:3px;padding:1px 6px;vertical-align:middle;margin:0 2px;line-height:1.6;}
+.ann-vol{background:#EEEDFE;color:#3C3489;}
+.ann-emot{background:#FAECE7;color:#4A1B0C;}
+.ann-pace{background:#FAEEDA;color:#412402;}
+.ann-gesture{background:#E6F1FB;color:#0C447C;}
+.vw{font-weight:500;border-bottom:1.5px solid #FAC775;}
+.quote-block{margin:1rem 0;padding:0.75rem 1rem;border-left:3px solid #5DCAA5;background:var(--color-background-secondary);border-radius:0 var(--border-radius-md) var(--border-radius-md) 0;}
+.quote-block p{font-family:var(--font-serif);font-size:15px;font-style:italic;color:var(--color-text-primary);margin:0;line-height:1.7;}
+.inscription{text-align:center;font-family:var(--font-serif);font-size:14px;font-style:italic;color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:0.75rem 1rem;margin:1rem 0;background:var(--color-background-secondary);}
+.emphasis-box{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;margin-bottom:1.5rem;}
+.emphasis-item{display:flex;gap:10px;margin-bottom:0.75rem;align-items:flex-start;}
+.emphasis-item:last-child{margin-bottom:0;}
+.emphasis-num{font-size:11px;font-weight:500;background:#D3D1C7;color:#2C2C2A;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
+.emphasis-text{font-size:13px;color:var(--color-text-primary);line-height:1.5;}
+.ann-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1.25rem;}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--color-text-secondary);}
+.story-connector{text-align:center;font-size:11px;color:var(--color-text-tertiary);padding:0.5rem 0;margin-bottom:1rem;}
+</style>
+<div class="sp-wrap">
+<h2 class="sr-only">OWL Story Pack: The Brick That Remembered — Y6 Summer 1 Lesson 1</h2>
+<div class="sp-header">
+  <div class="sp-meta">
+    <span class="sp-badge sp-badge-year">Year 6</span>
+    <span class="sp-badge sp-badge-sub">History</span>
+    <span class="sp-badge sp-badge-chapter">Summer 1 · Lesson 1</span>
+    <span class="sp-badge sp-badge-source">Source: Booklet pages 3–6 · Slides 11–13</span>
+  </div>
+  <p class="sp-title">The Brick That Remembered</p>
+  <p class="sp-subtitle">Story pack for: Changing Cities — Brickmakers, scribes and kings: the city of Ur</p>
+</div>
+
+<p class="section-label">Source grounding</p>
+<div class="source-note">This story is drawn exclusively from pages 3–6 of the Changing Cities booklet. Every named person, date, place and event appears in that source text. No detail has been invented or inferred from outside it.</div>
+
+<p class="section-label">Step 1 — Vocabulary pre-teach</p>
+<div class="vocab-grid">
+  <div class="vocab-card">
+    <p class="vocab-word">Ziggurat</p>
+    <p class="vocab-pron">zig-oo-rat</p>
+    <p class="vocab-def">A massive stepped tower built by ancient Mesopotamian peoples as a temple to their gods. Each layer smaller than the one below.</p>
+    <p class="vocab-ex">"Imagine a mountain built by human hands, rising above the flat plains — that is a ziggurat."</p>
+  </div>
+  <div class="vocab-card">
+    <p class="vocab-word">Cuneiform</p>
+    <p class="vocab-pron">kyoo-nee-i-form</p>
+    <p class="vocab-def">The ancient writing system of Mesopotamia — made by pressing a wedge-shaped stylus into soft clay.</p>
+    <p class="vocab-ex">"Cuneiform was one of the first writing systems ever invented by human beings."</p>
+  </div>
+  <div class="vocab-card">
+    <p class="vocab-word">Inscription</p>
+    <p class="vocab-pron">in-scrip-shun</p>
+    <p class="vocab-def">Words stamped, carved or written onto a hard surface to last for a very long time.</p>
+    <p class="vocab-ex">"The inscription on the brick would survive long after everyone who had seen it was gone."</p>
+  </div>
+  <div class="vocab-card">
+    <p class="vocab-word">Deity</p>
+    <p class="vocab-pron">dee-i-tee</p>
+    <p class="vocab-def">A god or goddess. The people of Ur believed their city was watched over and protected by deities.</p>
+    <p class="vocab-ex">"The walls of Ur were built to please the deities, not just to keep out enemies."</p>
+  </div>
+  <div class="vocab-card">
+    <p class="vocab-word">Overseer</p>
+    <p class="vocab-pron">oh-ver-see-er</p>
+    <p class="vocab-def">A person whose job is to watch over workers and make sure the work gets done on time.</p>
+    <p class="vocab-ex">"With the overseer watching, no brickmaker could afford to stop and rest for long."</p>
+  </div>
+</div>
+
+<p class="section-label">Step 2 — The story</p>
+<div class="ann-legend">
+  <div class="legend-item"><span class="ann">PAUSE</span> deliberate pause</div>
+  <div class="legend-item"><span class="ann ann-vol">VOICE</span> volume / tone shift</div>
+  <div class="legend-item"><span class="ann ann-pace">PACE</span> slow down or speed up</div>
+  <div class="legend-item"><span class="ann ann-emot">FEEL</span> play on emotion</div>
+  <div class="legend-item"><span class="ann ann-gesture">GESTURE</span> point to image</div>
+</div>
+
+<div class="story-box">
+  <div class="slide-marker">Slides 11 — Booklet page 3</div>
+  <p class="story-title">Part 1: The brickmaker</p>
+  <div class="story-body">
+    <p><span class="ann ann-vol">VOICE — quiet, close, as if you're there</span> Picture a morning in the ancient city of Ur. <span class="ann">PAUSE</span> The year is around 2100 BCE — more than four thousand years ago. The air is already hot. And just outside the city walls, on the banks of the River Euphrates, a man is at work.</p>
+    <p>He is a brickmaker. <span class="ann ann-pace">PACE — slow down, let the ordinariness of this land</span> Sticky, reddish mud clings to his hands. It cakes under his fingernails. Around him, other workers dig and haul the moist, red-brown clay from the nearby pits. There is no stone here on the flat plains of Mesopotamia. Everything must be made from clay.</p>
+    <p>The brickmaker cannot stop for long. <span class="ann ann-emot">FEEL — the pressure of the quota</span> He has 240 bricks to make today. Two hundred and forty. And somewhere behind him — he can feel it without looking — the <span class="vw">overseer</span> is watching.</p>
+    <p>He mixes clay with straw and water. He pours the mixture into a square mould. These square bricks won't dry in the sun like ordinary bricks — they will be taken to the brick-firing yard, just outside the city, and baked hard in a kiln. <span class="ann ann-pace">PACE — pick up the rhythm now</span> Mix, mould, fire. Mix, mould, fire. This is his day. Every day.</p>
+    <p>But this brickmaker knows something most workers will never know. He knows what these bricks are for. <span class="ann ann-emot">FEEL — herald what's coming</span></p>
+  </div>
+</div>
+
+<div class="story-connector">▼ continue without pause — turn to slide 12</div>
+
+<div class="story-box">
+  <div class="slide-marker">Slide 12 — Booklet page 4 · introduce 'precinct' and 'complex' in context, gesture at the image</div>
+  <p class="story-title">Part 2: What rises in the distance</p>
+  <div class="story-body">
+    <p>When the bricks are baked, they will be carried to a holy site — <span class="ann ann-gesture">GESTURE — point to the sacred area on the slide image</span> a sacred <span class="vw">precinct</span> in the heart of Ur. An enclosed, holy place. And inside that precinct, King Ur-Nammu is building something extraordinary.</p>
+    <p>The brickmaker can just see it from where he stands. <span class="ann ann-vol">VOICE — lower, in awe</span> Slowly, <span class="ann ann-pace">PACE — stretch this word</span> incrementally, it rises skyward.</p>
+    <p>It is a <span class="vw">ziggurat</span>. <span class="ann">PAUSE</span> A massive, stepped tower — like a man-made mountain climbing toward the heavens. <span class="ann ann-gesture">GESTURE — gesture upward</span> Now and then, the brickmaker glances up to watch it grow. Each of his bricks will become part of it. Each one will help it rise a little further.</p>
+    <p>The whole temple <span class="vw">complex</span> — <span class="ann ann-gesture">GESTURE — sweep your hand across the whole image</span> all these connected buildings, all this sacred ground — will be dedicated to Nanna, god of the Moon. <span class="ann ann-emot">FEEL — this matters</span> Every brick the brickmaker makes is an act of devotion, whether he thinks of it that way or not.</p>
+    <p>But there is one more thing he must do with each brick before it leaves his hands. <span class="ann ann-emot">FEEL — build anticipation</span></p>
+  </div>
+</div>
+
+<div class="story-connector">▼ continue — turn to slide 13</div>
+
+<div class="story-box">
+  <div class="slide-marker">Slide 13 — Booklet pages 5–6 · hold the inscription animation until the dog's paws land</div>
+  <p class="story-title">Part 3: The brick that will speak forever</p>
+  <div class="story-body">
+    <p>Each brick must be stamped with an <span class="vw">inscription</span>. <span class="ann ann-vol">VOICE — quiet, almost ceremonial</span> The brickmaker cannot read it. Hardly anyone will ever read it, because the brick will be hidden inside the walls. But that is not the point.</p>
+    <p>The gods will see it. <span class="ann">PAUSE</span> The god Nanna will see it. And this is how Nanna will know of King Ur-Nammu's devotion. <span class="ann ann-pace">PACE — very slowly now</span> These words, pressed into every brick, will whisper on like never-ending prayers — placating the gods, asking their blessing on the city and its walls.</p>
+    <p><span class="ann ann-emot">FEEL — there is something larger at stake here</span> And should any future king — some unscrupulous king, reigning long after Ur-Nammu is gone — try to claim that he built the ziggurat... the bricks will speak. They will say: this was Ur-Nammu's doing. His name is written in every one of them.</p>
+    <p>The brickmaker picks up the stamp. <span class="ann ann-pace">PACE — hold the moment</span> In one deft movement, he presses it into the soft clay. The <span class="vw">cuneiform</span> script pushes deep into the surface. Neat. Permanent. <span class="ann">PAUSE — do not reveal the inscription yet</span></p>
+    <p>But before he can set the brick aside — <span class="ann ann-emot">FEEL — something ordinary is about to become extraordinary</span> — he hears a sound. Scrabbling paws. A dog is bounding toward him across the worksite, nose up, hoping for scraps of the brickmaker's barley bread.</p>
+    <p><span class="ann ann-vol">VOICE — urgent, almost amused</span> The brickmaker scarcely has time to think.</p>
+    <p>Quick as a flash — <span class="ann">PAUSE — NOW reveal the inscription on the slide</span></p>
+    <p><span class="ann ann-pace">PACE — very slowly</span> The dog trots... onto the brick. His paws press... into the soft clay.</p>
+    <p><span class="ann">PAUSE — long pause — let it land</span></p>
+    <p><span class="ann ann-vol">VOICE — almost a whisper</span> And there they stayed.</p>
+    <p>The paw prints of a Mesopotamian dog. <span class="ann ann-pace">PACE — each phrase its own beat</span> Hidden in the walls of Ur. Baked hard in the kiln. Buried under centuries of dust. Waiting.</p>
+    <div class="inscription">Ur-Nammu, king of Ur, he who built the temple of the god Nanna.</div>
+    <p><span class="ann ann-emot">FEEL — the full weight of time</span> Until an archaeologist found them. <span class="ann">PAUSE</span> Four thousand years later.</p>
+  </div>
+</div>
+
+<p class="section-label">Step 3 — What to emphasise</p>
+<div class="emphasis-box">
+  <div class="emphasis-item">
+    <div class="emphasis-num">1</div>
+    <div class="emphasis-text"><strong>The dog's paw prints are the revelation — protect them.</strong> Everything builds toward this moment. Do not rush it. The three-beat sequence — the dog bounds over, the paws press into the clay, four thousand years pass — needs space. The longer the pause before "four thousand years later," the more powerful the landing.</div>
+  </div>
+  <div class="emphasis-item">
+    <div class="emphasis-num">2</div>
+    <div class="emphasis-text"><strong>Keep 'precinct' and 'complex' in the flow.</strong> The teacher notes are specific: do not pause to define these words. Gesture at the image as you say them so pupils hear them in context and connect them visually. They will be defined formally later in the lesson.</div>
+  </div>
+  <div class="emphasis-item">
+    <div class="emphasis-num">3</div>
+    <div class="emphasis-text"><strong>The brickmaker does not know he is making history.</strong> This is the quiet thread running through the story. He is doing an ordinary job. His brick will outlast everything he knows. Pupils should feel the strangeness of that — the way ordinary actions can carry meaning across thousands of years.</div>
+  </div>
+</div>
+</div>

@@ -52,3 +52,5 @@ data/
 # R artefacts
 .Rhistory
 .RData
+._.DS_Store
+._*
