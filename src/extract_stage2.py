@@ -303,6 +303,29 @@ def write_to_database(db_path: str, metadata: dict, extraction_results: dict) ->
             else:
                 stats['concepts_created'] += 1
 
+            # 2026-05-02: Dedup check — skip if an occurrence for this
+            # concept + unit + slide already exists (handles reruns safely).
+            slide = term_data['slide']
+            if slide is None:
+                dup_count = cursor.execute(
+                    """SELECT COUNT(*) FROM occurrences
+                       WHERE concept_id = ? AND subject = ? AND year = ?
+                       AND unit = ? AND term = ? AND slide_number IS NULL""",
+                    (concept_id, metadata['subject'], metadata['year'],
+                     metadata['unit'], metadata['term'])
+                ).fetchone()[0]
+            else:
+                dup_count = cursor.execute(
+                    """SELECT COUNT(*) FROM occurrences
+                       WHERE concept_id = ? AND subject = ? AND year = ?
+                       AND unit = ? AND term = ? AND slide_number = ?""",
+                    (concept_id, metadata['subject'], metadata['year'],
+                     metadata['unit'], metadata['term'], slide)
+                ).fetchone()[0]
+            if dup_count > 0:
+                stats['concepts_reused'] += 0  # already counted above
+                continue
+
             # Insert occurrence
             insert_occurrence(cursor, concept_id, metadata, term_data)
             stats['occurrences_created'] += 1
@@ -312,6 +335,132 @@ def write_to_database(db_path: str, metadata: dict, extraction_results: dict) ->
 
     except Exception as e:
         stats['errors'].append(f"Database error: {str(e)}")
+
+    return stats
+
+
+def write_missed_vocab_terms(db_path: str, metadata: dict, missed_terms: list,
+                             vocab_source: str) -> dict:
+    """
+    Insert vocab-list terms that were not bold-extracted as confirmed occurrences.
+
+    These are terms present in the authoritative vocab .docx but absent from
+    the bold-text extraction (e.g. body-text-only terms, caption terms).
+    They are written with:
+      - is_introduction = 1  (vocab lists define introductions by chapter)
+      - validation_status   = 'confirmed'  (authoritative source)
+      - vocab_confidence    = 1.0
+      - vocab_match_type    = 'vocab_only'
+      - needs_review        = 0
+
+    2026-05-02: Added to fix missed vocab-list terms (e.g. 'archaeologist').
+
+    Args:
+        db_path: Path to SQLite database
+        metadata: File metadata (subject, year, term, unit, source_path)
+        missed_terms: List of term strings from validation_stats['missed_terms']
+        vocab_source: Filename of the vocab .docx used
+
+    Returns:
+        dict with write statistics: concepts_created, concepts_reused,
+        occurrences_created, occurrences_skipped (already exist), errors
+    """
+    stats = {
+        'concepts_created': 0,
+        'concepts_reused': 0,
+        'occurrences_created': 0,
+        'occurrences_skipped': 0,
+        'errors': []
+    }
+
+    if not missed_terms:
+        return stats
+
+    # Filter out vocab-docx artefacts: document titles, version strings,
+    # multi-clause phrases (> 5 words), and entries with digits/slashes that
+    # look like version numbers or dates.
+    # 2026-05-02: Added to prevent noise from leaking in via missed_terms.
+    import re as _re
+    def _is_vocab_noise(t: str) -> bool:
+        t = t.strip()
+        if not t or len(t) > 60:
+            return True
+        # Too many words = phrase/sentence, not a term
+        if len(t.split()) > 6:
+            return True
+        # Looks like a version/date string
+        if _re.search(r'\d{2,}', t) and _re.search(r'[./]', t):
+            return True
+        # Looks like a document title (contains 'vocab', 'version', 'core vocab', etc.)
+        lower = t.lower()
+        for marker in ('vocab', 'version', 'core', 'document', 'chapter', 'based on',
+                       'updated', 'dropbox', 'booklet folder', 'a-z', 'organised by'):
+            if marker in lower:
+                return True
+        # Unicode non-latin characters in isolation (e.g. Punjabi numerals)
+        if _re.match(r'^[^\x00-\x7F]+$', t):
+            return True
+        return False
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        for term in missed_terms:
+            term = term.strip()
+            if not term:
+                continue
+            if _is_vocab_noise(term):
+                continue
+
+            # Check if an occurrence already exists for this term + unit
+            # (avoids duplication on rerun)
+            existing_occ = cursor.execute(
+                """SELECT COUNT(*) FROM occurrences o
+                   JOIN concepts c ON o.concept_id = c.concept_id
+                   WHERE c.term = ? AND o.subject = ? AND o.year = ?
+                   AND o.unit = ? AND o.term = ?""",
+                (term, metadata['subject'], metadata['year'],
+                 metadata['unit'], metadata['term'])
+            ).fetchone()[0]
+
+            if existing_occ > 0:
+                stats['occurrences_skipped'] += 1
+                continue
+
+            # Get or create concept
+            existing_concept = cursor.execute(
+                "SELECT COUNT(*) FROM concepts WHERE term = ?", (term,)
+            ).fetchone()[0]
+
+            concept_id = get_or_create_concept(cursor, term, metadata['subject'])
+
+            if existing_concept > 0:
+                stats['concepts_reused'] += 1
+            else:
+                stats['concepts_created'] += 1
+
+            # Build a synthetic term_data dict for insert_occurrence
+            term_data = {
+                'chapter': None,
+                'slide': None,
+                'context': f'[vocab list only — not bold in booklet]',
+                'flagged': False,
+                'review_reason': None,
+                'validation_status': 'confirmed',
+                'vocab_confidence': 1.0,
+                'vocab_match_type': 'vocab_only',
+                'vocab_source': vocab_source,
+            }
+
+            insert_occurrence(cursor, concept_id, metadata, term_data)
+            stats['occurrences_created'] += 1
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        stats['errors'].append(f"Database error (missed vocab terms): {str(e)}")
 
     return stats
 
@@ -441,6 +590,27 @@ def process_file(pptx_path: str, db_path: str, csv_output_dir: str = None) -> di
         if db_stats['errors']:
             results['errors'].extend(db_stats['errors'])
 
+        # Step 3b: Insert missed vocab-list terms (2026-05-02)
+        # Terms in the authoritative vocab .docx that weren't bold in the booklet
+        # are written as confirmed introductions so they appear in the knowledge map.
+        vstats = extraction.get('validation_stats', {})
+        missed = vstats.get('missed_terms', [])
+        vocab_src = vstats.get('vocab_list', '')
+        if missed:
+            print(f"  Inserting {len(missed)} missed vocab-list term(s) as confirmed...")
+            missed_stats = write_missed_vocab_terms(db_path, metadata, missed, vocab_src)
+            results['missed_vocab_stats'] = missed_stats
+            # Merge counts into db_stats for reporting
+            db_stats['concepts_created'] += missed_stats['concepts_created']
+            db_stats['concepts_reused'] += missed_stats['concepts_reused']
+            db_stats['occurrences_created'] += missed_stats['occurrences_created']
+            if missed_stats['errors']:
+                results['errors'].extend(missed_stats['errors'])
+            print(f"  Missed vocab: +{missed_stats['occurrences_created']} occurrences, "
+                  f"{missed_stats['occurrences_skipped']} already existed")
+        else:
+            results['missed_vocab_stats'] = None
+
         # Step 4: Export to CSV (optional)
         if csv_output_dir:
             csv_filename = f"{Path(pptx_path).stem}_extracted.csv"
@@ -495,6 +665,11 @@ def print_results(results: dict):
         print(f"  New concepts: {s['concepts_created']}")
         print(f"  Existing concepts: {s['concepts_reused']}")
         print(f"  Occurrences created: {s['occurrences_created']}")
+
+    if results.get('missed_vocab_stats'):
+        mv = results['missed_vocab_stats']
+        print(f"  Missed vocab insertions: {mv['occurrences_created']} "
+              f"(skipped {mv['occurrences_skipped']} already present)")
 
     if results['csv_path']:
         print(f"\nCSV exported to: {results['csv_path']}")

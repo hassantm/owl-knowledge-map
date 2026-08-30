@@ -284,3 +284,18 @@ This is an internal professional project to make the curriculum's knowledge arch
 ## Curriculum Authors
 Christine Counsell and Steve Mastin, Opening Worlds Ltd  
 © 2021 Christine Counsell and Steve Mastin
+
+## Story Pack Icon Hashes
+
+When running  or , pass all three known
+story icon hashes via  to ensure all story slides are detected:
+
+```
+--story-icon-hash ccf3ec0b8550fa9acd31d8d4d5cae37e \
+--story-icon-hash e0d120b4971f376a079b0a1f439969ec \
+--story-icon-hash 48a024b806c0f826053b607fd36475c6
+```
+
+Identified 2026-04-29. The three icons are visual variants of the same story/narrative
+activity icon used across different units. The first is the most common (original);
+the other two are alternate designs used in some Geography and History units.

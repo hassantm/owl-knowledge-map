@@ -38,6 +38,10 @@ def get_ready_units() -> list[dict]:
                 FROM units
                 WHERE lesson_content IS NOT NULL
                   AND booklet_content IS NOT NULL
+                  AND (
+                    SELECT COUNT(*) FROM jsonb_each(lesson_content->'slides') s
+                    WHERE (s.value->>'story_slide')::boolean = true
+                  ) > 0
                 ORDER BY year, subject, term
             """)
             return [dict(r) for r in cur.fetchall()]

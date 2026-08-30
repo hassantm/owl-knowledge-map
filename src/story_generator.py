@@ -77,7 +77,7 @@ The annotation type is the first word; content follows after a colon or em dash.
 Annotation density: at least one annotation per paragraph. Every slide transition must carry a [[HERALD: ...]] before it.
 
 VOCABULARY WORD MARKING
-Wrap each pre-taught vocabulary word (from the vocabulary list) in curly braces when it appears in the story body: {ziggurat}, {overseer}, {cuneiform}. This causes it to display underlined in gold in the rendered output.
+Wrap each pre-taught vocabulary word (from the vocabulary list) in curly braces when it appears in the story body: {ziggurat}, {overseer}, {cuneiform}. This causes it to display underlined in gold in the rendered output. Use the grammatically correct inflected form for the sentence — e.g. write {voting} or {vote} rather than forcing {voted} when it does not fit the grammar. The word inside the braces must read naturally in context; do not use a form that produces ungrammatical English.
 
 OUTPUT FORMAT — JSON ONLY
 Respond with a single valid JSON object. No markdown fences. No preamble. No commentary after the JSON.

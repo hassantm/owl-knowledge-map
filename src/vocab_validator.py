@@ -9,10 +9,17 @@ Created: 2026-02-24
 """
 
 import re
+import zipfile
 from difflib import SequenceMatcher
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
-from docx import Document
+# Try python-docx first; fall back to built-in zipfile/ElementTree
+try:
+    from docx import Document as _DocxDocument
+    _DOCX_AVAILABLE = True
+except ImportError:
+    _DOCX_AVAILABLE = False
 
 
 # =============================================================================
@@ -73,6 +80,39 @@ def find_vocab_list(pptx_path: str) -> str | None:
 # VOCAB LIST PARSING
 # =============================================================================
 
+def _read_docx_paragraphs(docx_path: str) -> list:
+    """
+    Extract paragraph texts from a .docx file.
+
+    Uses python-docx if available; falls back to built-in zipfile + ElementTree
+    so the pipeline works without external dependencies.
+
+    2026-05-02: Added zipfile fallback so vocab_validator works when
+    python-docx is not installed in the active Python environment.
+
+    Args:
+        docx_path: Path to .docx file
+
+    Returns:
+        List of non-empty paragraph text strings
+    """
+    if _DOCX_AVAILABLE:
+        doc = _DocxDocument(docx_path)
+        return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+    # Fallback: parse word/document.xml directly
+    NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+    paragraphs = []
+    with zipfile.ZipFile(docx_path) as z:
+        xml = z.read('word/document.xml')
+    root = ET.fromstring(xml)
+    for para in root.findall('.//w:p', NS):
+        text = ''.join(t.text or '' for t in para.findall('.//w:t', NS)).strip()
+        if text:
+            paragraphs.append(text)
+    return paragraphs
+
+
 def parse_vocab_docx(docx_path: str) -> dict:
     """
     Parse a vocabulary list .docx into structured data.
@@ -81,6 +121,7 @@ def parse_vocab_docx(docx_path: str) -> dict:
     of paragraph style, since style names differ across documents.
 
     Created: 2026-02-24
+    2026-05-02: Refactored to use _read_docx_paragraphs (python-docx optional).
 
     Args:
         docx_path: Path to vocab list .docx file
@@ -96,30 +137,29 @@ def parse_vocab_docx(docx_path: str) -> dict:
             }
         }
     """
-    doc = Document(docx_path)
+    paragraphs = _read_docx_paragraphs(docx_path)
 
     chapters = {}
     current_chapter = '0'  # Terms before first heading go into chapter '0'
     chapter_pattern = re.compile(r'^Chapter\s+(\d+)', re.IGNORECASE)
+    first_entry_seen = False
 
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-
+    for text in paragraphs:
         # Check for chapter heading
         chapter_match = chapter_pattern.match(text)
         if chapter_match:
             current_chapter = chapter_match.group(1)
             if current_chapter not in chapters:
                 chapters[current_chapter] = []
+            first_entry_seen = False
             continue
 
         # Skip the document title (first non-empty paragraph if chapter '0' still empty)
-        if current_chapter == '0' and not chapters.get('0'):
+        if current_chapter == '0' and not first_entry_seen:
             # Heuristic: if text is long and looks like a title, skip it
-            if len(text) > 40 or para.style.name in ('Title', 'Heading 1', 'Heading 2'):
+            if len(text) > 40:
                 continue
+            first_entry_seen = True
 
         # Everything else is a vocabulary term
         if current_chapter not in chapters:

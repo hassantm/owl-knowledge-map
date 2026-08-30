@@ -146,7 +146,9 @@ def _slide_body_text(slide) -> str:
 def _slide_notes(slide) -> str:
     """Return the speaker notes text, or empty string."""
     if slide.has_notes_slide:
-        return slide.notes_slide.notes_text_frame.text.strip()
+        ntf = slide.notes_slide.notes_text_frame
+        if ntf is not None:
+            return ntf.text.strip()
     return ""
 
 
@@ -213,7 +215,7 @@ def extract_lesson_content(pptx_path: str, model: str,
     """
     path = Path(pptx_path)
     if path.is_dir():
-        pptx_files = sorted(path.glob("*.pptx"))
+        pptx_files = sorted(p for p in path.glob('*.pptx') if not p.name.startswith('~$'))
         if not pptx_files:
             raise ValueError(f"No .pptx files found in {pptx_path}")
     else:
