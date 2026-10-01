@@ -94,7 +94,11 @@ The largest feature section documents a 3D force-directed graph with three layou
 
 `api/routes/semantic.py` and the `getSemanticClusters` client function still exist, but no view calls them.
 
-**Decided 2026-08-31: leave the semantic code alone.** The README section gets rewritten to describe it as dormant rather than shipped; `api/routes/semantic.py`, the client function and `docs/semantic-analysis-report.md` all stay. Restoring the view would need the `3d-force-graph` dependency back, so the cost of keeping the endpoint is a few unused files — cheaper than deleting work whose removal was not deliberate.
+**Why it went (confirmed by Hassan, 2026-08-31): a deliberate design decision, not drift.** Force-directed layouts — and the Gephi-style output of the open-source graph tooling generally — were judged unlikely to be intuitive for primary school teachers. A viewer cannot read the underlying message off an emergent physics layout, because position and distance encode nothing they can interpret: proximity is an artefact of the simulation, not a claim about the curriculum. The 3D graph was replaced with more static but more *informative* views, which is why `ArchitectureView`, `TimelineView` and `WordAtlasView` look the way they do.
+
+**This makes the README worse than stale — it advertises an approach that was tried and rejected**, and in doing so undersells the deliberate design that replaced it. Rewriting it is not a tidy-up; it is the difference between the repo explaining a considered choice and appearing to have lost a feature.
+
+**Decided: leave the semantic code in place** (`api/routes/semantic.py`, the client function, and `docs/semantic-analysis-report.md`). The semantic *analysis* produced a genuine finding worth keeping — the embedding model independently recovered OWL's cross-subject design without access to subject labels. That finding stands on its own and does not depend on a 3D graph to present it; it is arguably better served by a static, deliberate visualisation than by the one that was removed.
 
 ### 2.3 `GET /` returns the database password
 
@@ -182,7 +186,7 @@ Every phase is a git operation on a pushed branch, so revert is `git reset --har
 
 ## 5. Open questions
 
-1. ~~Is the semantic view coming back?~~ **Answered: leave it alone** (§2.2). Still worth establishing at some point *why* it went — the endpoint, client function and analysis report all survive, so this looks like working software that got dropped rather than something abandoned mid-build.
+1. ~~Is the semantic view coming back? Why did it go?~~ **Both answered** (§2.2): removed deliberately because force-directed layouts were not intuitive for primary teachers. Code stays, README gets rewritten to describe the choice.
 2. **Is `cpd.vocabulary_items` a planned integration?** Zero rows against a schema shaped to receive knowledge-map vocabulary. If it is planned, `owl_core` is the natural place for the shared contract and that changes what goes in it.
 3. **Does anything outside this Pi consume these repos?** The rename in phase 7 and the archives in phase 8 are safe only if nothing else clones them. The Anvil app's `uplink.py` in `owl-knowledge-map` suggests there was once a live Anvil deployment — is it gone?
 4. **Where does the ingest actually run?** Still open from the ingest fix plan. No Dropbox mount exists on this host, so `batch_ingest.py` has never run here. If there is a second machine, it needs to be in scope for phase 6's import changes.
