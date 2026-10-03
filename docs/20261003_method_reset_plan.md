@@ -1,7 +1,7 @@
 # Plan: reset the knowledge-map method and rebuild the core map
 
 **Date:** 2026-10-03
-**Status:** Plan agreed in principle. Nothing executed.
+**Status:** Phases 1–3 applied 2026-10-03 (see §6). Phases 4–5 next.
 **Related:** [recurrence gap-fill session](20261002_recurrence_gap_fill_session.md) · [consolidation plan](20260831_owl_consolidation_plan.md) · [ingest matcher fix plan](20260830_ingest_matcher_fix_plan.md) · `CLAUDE.md` ("Method and intent")
 
 ---
@@ -122,3 +122,36 @@ Each phase has a gate. Every phase that writes to the database follows the worki
 1. Where should the concept-type tag live: a new `concepts.concept_type` column (migration 007), or alongside `geo_scope`?
 2. Should inflection matching use a hand-reviewed variant list (precise, slow) or a lemmatiser plus review of the matches (faster, may over-match)?
 3. When Christine and Steve sign off, do they use the dashboard, or a static document prepared from it?
+
+## 6. Progress (2026-10-03)
+
+### Phase 1 — one inclusion rule: done
+`v_occurrences` (migration 007) is read by the pipeline and every dashboard route. The four conflicting `validation_status` filters are gone.
+
+### Phase 2 — concept hygiene and matching: done
+- **Cleanup:** 24 bold-only introductions and 17 fragment concepts from the 2 Oct Sikhism 1 extraction removed; 6 truncated terms repaired and 4 merged.
+- **Base-form merges:** 132 concepts merged into 126 base-form concepts (migration 008: `concept_forms`, `merged_into`, `authored_term`). 8 groups with different senses kept separate.
+- **List alignment:** every unit's current list fetched from Dropbox and the database aligned to it (`align_vocab_lists.py`, migration 009). Earlier introductions had come from older list versions and hand-made copies. Result: +60 introductions (51 new concepts, e.g. Qur'an, Jew, market, Mughal Empire), −25 no longer listed, zero drift in all 64 units.
+- **Inflections:** 483 lemminflect forms reviewed; 409 approved, 74 rejected as another word or sense (bore → born, grind → ground, wells → well).
+- **Gap-fill:** cut-off now in curriculum order; matches every approved form; apostrophes interchangeable; picture credits stripped.
+
+### Phase 3 — rebuild: done
+- **Pruning:** 373 rows outside the inclusion rule removed (2 edge-referenced rows kept).
+- **Gap-fill:** +881 recurrences; idempotent on rerun.
+- **Co-occurrences:** 706,716 pairs (was 270,367).
+- **Map now:** 2,844 concepts; 9,070 occurrences (3,068 introductions, 6,002 recurrences); Geography 110, History 167, Religion 150 occurrences per unit.
+- **Recurrence share by year:** Y3 37%, Y4 60%, Y5 73%, Y6 76%.
+
+### Carried into Phase 4
+- **Ambiguous-term list:** start with bank, fast, source, lock, plus authored polysemous terms (court, state, order, spring, mine, iron, line, pass, power, scale, might, mind, grave, yard, vessel, bound, Waves).
+- **Concept-type tags** for all 2,844 concepts. The 51 new concepts also need enrichment.
+
+### Carried into Phase 5
+- **Edges to re-check:** 4 edges now have one end that is a recurrence rather than an introduction: Ethiopia (Geography Ethiopia), Christ (Ancient Egypt), surrender (Persia and Greece), prayer (Islam Arabia).
+
+### Questions for Christine and Steve
+1. **"worship"** is on no current unit list: Rama and Sita's current list dropped it. Should it be listed somewhere?
+2. **Roman Empire:** the docx list says "height", the PDF of the same date says "at the height of". Which is final?
+3. **More Hindu Stories:** the Dec 2023 slide version appears to lack "Mahabharata" and "versions" (possibly inside an image). Are they still on the list?
+4. **Islam Arabia** and **Life and Teaching of Jesus:** the only list files sit in "prep" folders; **Agriculture's** only in "older". Are these the current lists?
+5. **Typos in lists:** "Gaugalmela", "unleavened bred", "veni, vedi, vici" (kept as authored; matched by the correct spelling too).
