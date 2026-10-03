@@ -1,294 +1,162 @@
 # OWL Knowledge Map — Project Context
 
+> **Status of this file (2026-10-03):** rewritten to describe the system as it actually is.
+> The previous version described the February 2026 SQLite/Anvil design and is in git history.
+> Method and intent were re-decided with the owner on 2026-10-03 (see "Method and intent").
+> **[UNDER REVIEW]** markers show where current behaviour differs from that decided method.
+
 ## Overview
 
-This project analyses the Opening Worlds Ltd (OWL) Key Stage 2 humanities curriculum — a knowledge-based curriculum covering History, Geography and Religion for Years 3–6 (primary). The curriculum was authored by Christine Counsell and Steve Mastin, both prominent figures in knowledge-based curriculum theory (influenced heavily by E.D. Hirsch).
+This project analyses the Opening Worlds Ltd (OWL) Key Stage 2 humanities curriculum (History,
+Geography, Religion; Years 3–6; 64 units). The curriculum was written by Christine Counsell and
+Steve Mastin. The aim is to make its knowledge architecture visible to teachers: which concepts
+are introduced where, and how they recur and build across units, years and subjects.
 
-The goal is to extract the conceptual vocabulary deliberately embedded in the curriculum booklets, build a structured database of those concepts and their locations, and ultimately construct a directed knowledge graph showing how concepts are introduced, reinforced and built upon across subjects and years. This makes visible to teachers the curricular architecture that currently exists only in the authors' heads.
-
----
-
-## Source Material
-
-- **Format**: PowerPoint (.pptx) booklets, one per unit
-- **Location**: Dropbox, mirrored locally
-- **Structure**: `/{Subject}/{Year} {Subject} {Term} {Unit}/Booklet/filename.pptx`
-- **Example path**: `Year 4 Hist/Y4 Hist Spring 2 Christianity in 3 empires/Y4 Hist Spring 2 Booklet.pptx`
-- **Subjects**: History, Geography, Religion
-- **Years**: 3, 4, 5, 6
-- **Terms**: Autumn 1, Autumn 2, Spring 1, Spring 2, Summer 1, Summer 2
-
-The folder naming convention is consistent and encodes Subject, Year and Term directly — the file path is the primary source of metadata.
-
-Each unit folder also contains a Vocab List subfolder with a pre-curated vocabulary list. These can be used for validation against the automated bold-text extraction.
+The project has three strands that share one database:
+1. **Knowledge map:** concepts, occurrences, co-occurrences and human-judged edges.
+2. **Vocabulary enrichment:** definitions, etymology, word family, register and tier for each concept.
+3. **Story packs:** LLM-generated teacher storytelling resources, assembled from unit content and gated by human approval.
 
 ---
 
-## Key Design Decisions
+## System as built
 
-### Bold Terms as Concept Markers
-In the OWL curriculum, words and phrases printed in **bold** within the booklet text represent concepts being formally introduced. They are deliberate pedagogical markers, not incidental formatting. Once introduced, these concepts recur in later units without being re-bolded — they are assumed knowledge being applied and extended.
+### Repositories (siblings under `/home/htmadmin/dev/`)
+| Repo | Role |
+|---|---|
+| `owl-knowledge-map` (this repo) | Pipeline: ingestion, gap-fill, enrichment, co-occurrences, story packs. System of record for the schema. |
+| `owl-knowledge-map-dashboard` | FastAPI (`api/routes/`) + React/Vite front end over the same DB. Its `.env` is a symlink to this repo's `.env`. Start with `start_api.sh` (port 8000). |
+| `owl-geo-scope` | Loose scripts that add `geo_scope*` columns to `public.concepts` and classify concepts. Its migration is not in `migrations/`. |
+| `owl-knowledge-map-frontend` | The old Anvil app. **Superseded and dead**; do not extend it. |
+| `owl-cpd-platform` | A separate product (Next.js/Prisma) using schema `cpd` in the same `owl` DB. |
 
-### Terms Are Stored Exactly As Authored
-No normalisation or stemming. "culture" and "cultures" are separate entries if both appear in bold, because that reflects an authorial decision. The integrity of Counsell and Mastin's vocabulary choices is preserved exactly.
+A plan to consolidate the first three into one repo is in `docs/20260831_owl_consolidation_plan.md`. It has not been executed.
 
-### Multi-Word Phrases
-Bold formatting is applied to multi-word phrases as single runs (e.g. "official religion", "three wise men", "rose from the dead"). These are captured as single concept terms, not split at word boundaries.
+### Database: PostgreSQL `owl` on localhost
+- Connection is set by `DATABASE_URL` in `.env`, read by `src/db.py` and `enrichment/db.py`.
+- **Exceptions:** `src/uplink.py` and `src/graph_builder.py` read `OWL_DB_URL` instead, and fall back to a hard-coded DSN. `uplink.py` never loads `.env`.
+- Never print `.env` contents. It holds `ANTHROPIC_API_KEY`.
+- Schema `public` belongs to the knowledge map. Schema `cpd` belongs to the CPD platform, and `cpd.units` is unrelated to `public.units`. Always qualify table names when in doubt.
+- **SQLite (`db/owl_knowledge_map.db`) is legacy.** It was migrated to Postgres on 2026-03-14 and is no longer the source of truth.
+- **Schema is defined by** `src/build_db_postgres.sql`, then migrations `001`–`006`, applied by hand. There is no migration runner or version table. The `geo_scope` columns come from `owl-geo-scope/01_migrate_schema.sql`.
 
-### Human-Confirmed Edges
-Connections between occurrences (edges in the graph) are not generated automatically. A human reviewer confirms each edge and assigns an edge_nature value. This preserves scholarly judgement about whether a recurrence represents simple reinforcement or genuine conceptual extension.
+#### Tables (`public`)
+| Table | Rows (2026-10-03) | Notes |
+|---|---:|---|
+| `units` | 64 | **Authoritative** for subject/year/term/unit. `booklet_content` and `lesson_content` are JSONB per-page and per-slide text. All 64 have booklet text; 22 have lesson text. |
+| `concepts` | 2,946 | `term` stored exactly as authored. Enrichment columns: 2,927 approved, 19 pending. `geo_scope` is set for 887. |
+| `occurrences` | 8,938 | One concept at one location. FK `unit_id`. Also holds **denormalised** subject/year/term/unit copies, of which 153 rows disagree with `units`. Always join to `units` on `unit_id` for labels. |
+| `edges` | 176 | Human-confirmed links between occurrences, all made 2026-03-04 to 03-28, before the recurrence gap-fill. |
+| `co_occurrences` | 270,367 | Derived concept pairs at lesson and unit granularity. **Stale**: computed 2026-04-30, before gap-fill. |
+| `generated_story_packs` | 17 | All `claude-sonnet-4-6`, April 2026, none approved. |
 
----
+#### Column gotchas
+- `occurrences.term` is the **term period** (Autumn1…Summer2), not the word. The word is in `concepts.term`.
+- `is_introduction` is an INTEGER 0/1. In practice 1 means **"on the unit's core vocab list"**, not "bold in the booklet". Only 24 introductions came from bold extraction. 63 concepts have more than one introduction.
+- `vocab_source` is the vocab-list filename, `'booklet_gap_fill'` (recurrences mined from booklet text), `'bold_extraction'`, or NULL.
+- `validation_status` is a leftover from the February bold-extraction audit. **It is still used as the "counts as data" filter** by the dashboard API, the uplink, `graph_builder` and `insights` (`= 'confirmed'`). That makes 3,645 rows invisible to them, most of them gap-fill recurrences including the 2026-10-03 batch. The 162 `matched` rows were overwritten by `enrichment/validate_md_vocabs.py`. `co_occurrences` and story context do not filter. **[UNDER REVIEW]** Decided: one inclusion rule for all consumers (see Method).
+- `term_in_context` is a full paragraph for list-sourced rows and a ±60-character snippet for gap-fill rows.
 
-## Database Schema (SQLite)
+### How data got here (history in brief)
+1. **Feb 2026:** bold-run extraction from booklet PPTX (`extract_stage1/2.py`, `batch_process.py`) into SQLite, followed by noise filtering and audit.
+2. **26 Feb, vocab-first decision** (`docs/20260226_vocab_first_architecture.md`): the authors' per-unit **Core vocab lists** are the authority for what counts as a concept. Bold formatting was only a proxy for that intent.
+3. **Mar:** the Anvil review app. 176 edges were confirmed. Then the migration to Postgres.
+4. **Apr:** migrations 001–006. Added enrichment (`enrichment/`), co-occurrences, the `units` table, content ingestion of booklet and lesson text, and story packs.
+5. **Aug:** analysis docs (house style feasibility, ingest matcher fix plan, consolidation plan). The React dashboard replaced Anvil. A force-directed graph was tried and **deliberately rejected** as unreadable for primary teachers.
+6. **2–3 Oct:** loaded booklet text for the 31 missing units and reran a cleaned gap-fill, adding 3,458 recurrences. Produced the single-occurrence and transferable-concept exports. See `docs/20261002_recurrence_gap_fill_session.md`.
 
-### Table: `concepts`
-The abstract vocabulary item, independent of location.
+### Scripts: current vs legacy
+**Current (Postgres):**
+- `src/batch_ingest.py`, `src/content_ingestion.py`: PPTX text into `units.*_content`. Needs `--dropbox-root`. There is no Dropbox mount on this host; files have been fetched through the Dropbox connector into `data/booklets/`.
+- `src/gap_fill_occurrences.py`: mines booklet text for recurrences. Exact term only, case-insensitive, no plurals, and only for concepts introduced in or before the unit's year. The cleaned wrapper used in Oct is `data/booklets/gap_fill_clean.py` (gitignored).
+- `enrichment/enrich.py`, `review.py`, `compute_cooccurrences.py`. Run them from inside `enrichment/`.
+- `src/story_context.py`, `story_generator.py`, `story_qa.py`, `batch_generate.py`.
+- `src/style_corpus_stats.py`.
 
-```sql
-CREATE TABLE concepts (
-    concept_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    term            TEXT NOT NULL,
-    subject_area    TEXT
-);
-```
+**Legacy (SQLite) or broken. Do not run without reading them first:**
+- SQLite-era scripts: `init_db.py`, `extract_stage1.py`, `extract_stage2.py`, `batch_process.py`, `vocab_validator.py`, `audit_terms.py`, `enrich_audit.py`, `apply_audit_decisions.py`, `vocab_first_cleanup.py`, `repair_chapters.py`, `migrate_add_audit_columns.py`, `insights.py`.
+- `migrate_to_postgres.py`: would now fail, and its TRUNCATE CASCADE would wipe `co_occurrences`.
+- `build_graph.py`: broken.
+- `uplink.py`: Anvil only.
+- **There is currently no Postgres-native path for extracting new concepts.**
 
-### Table: `occurrences`
-A specific instance of a concept at a location in the curriculum.
+### Known hazards
+- `batch_generate.py --force --dry-run` **deletes** existing story packs, approved ones included, before it checks dry-run.
+- `--dry-run` in `content_ingestion.py` and `enrich.py` still calls the Anthropic API.
+- `story_context.py` treats later units in the same year as "prior" knowledge (`year <= year`).
+- `compute_cooccurrences.py` year_group SQL double-counts cross-subject pairs. No year_group rows are currently stored.
+- `occurrences` has no unique constraint, so `ON CONFLICT DO NOTHING` in gap-fill does nothing. Dedupe in code.
+- Tests (`tests/`, 97) cover only enrichment and co-occurrences, against inlined schema copies. They drop tables in `TEST_DATABASE_URL`, so never point that at `owl`.
+- `requirements.txt` is incomplete. It is missing `psycopg2-binary`, `python-dotenv`, `anthropic` and `pytest`.
 
-```sql
-CREATE TABLE occurrences (
-    occurrence_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    concept_id      INTEGER REFERENCES concepts(concept_id),
-    subject         TEXT NOT NULL,      -- 'History', 'Geography', 'Religion'
-    year            INTEGER NOT NULL,   -- 3, 4, 5, or 6
-    term            TEXT NOT NULL,      -- 'Autumn1', 'Autumn2', 'Spring1', 'Spring2', 'Summer1', 'Summer2'
-    unit            TEXT NOT NULL,      -- e.g. 'Christianity in 3 empires'
-    chapter         TEXT,               -- Chapter title parsed from slide heading
-    slide_number    INTEGER,
-    is_introduction BOOLEAN NOT NULL,   -- TRUE if bold (formal introduction), FALSE if recurrence
-    term_in_context TEXT,               -- Full paragraph text surrounding the term
-    source_path     TEXT                -- Full file path to source PPTX
-);
-```
-
-### Table: `edges`
-Directed relationships between occurrences of the same concept.
-
-```sql
-CREATE TABLE edges (
-    edge_id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_occurrence     INTEGER REFERENCES occurrences(occurrence_id),
-    to_occurrence       INTEGER REFERENCES occurrences(occurrence_id),
-    edge_type           TEXT,   -- 'within_subject' or 'cross_subject'
-    edge_nature         TEXT,   -- 'reinforcement', 'extension', or 'application'
-    confirmed_by        TEXT,   -- Name of human reviewer
-    confirmed_date      TEXT    -- ISO date string YYYY-MM-DD
-);
-```
-
----
-
-## Extraction Script Design
-
-### Core Libraries
-- `python-pptx` — PPTX parsing and bold run detection
-- `pathlib` — folder tree traversal
-- `sqlite3` — database writes
-- `re` — path parsing and term cleaning
-
-### Execution Flow
-
-**Stage 1 — Single file proof of concept**
-- Open one PPTX
-- Loop: slides → shapes → text frames → paragraphs → runs
-- Capture runs where `run.font.bold == True`
-- Print term and slide number to console
-- Validate against known content
-
-**Stage 2 — Metadata from file path**
-- Parse folder name: `Y4 Hist Spring 2 Christianity in 3 empires`
-- Extract: Year=4, Subject=History, Term=Spring2, Unit=Christianity in 3 empires
-- Handle subject abbreviations: Hist→History, Geog→Geography, Relig→Religion
-
-**Stage 3 — Chapter detection**
-- Chapter headings follow the pattern: `"1. Chapter title"`, `"2. Chapter title"` etc.
-- Detect by slide text matching `^\d+\.\s+` 
-- Track current chapter as state variable while iterating slides
-
-**Stage 4 — Noise filtering**
-- Discard purely numeric runs (line numbers for reading scaffolding)
-- Discard "Page N" patterns (table of contents entries)
-- Strip trailing punctuation from terms (`.`, `,`, `?`)
-- Flag short common words (len < 5 or on a stopword-adjacent list) for human review
-
-**Stage 5 — Context capture**
-- For each bold term, capture the full paragraph text as `term_in_context`
-- This preserves the semantic context for later analysis (e.g. "sacked" in the context of Rome being attacked, not employment)
-
-**Stage 6 — Scale to corpus**
-- Walk the full folder tree using `pathlib.Path.rglob`
-- Target files matching `*Booklet*.pptx` (excluding Powerpoints, Print resources etc.)
-- Accumulate all results, write to SQLite
-
-**Stage 7 — Output**
-- Write to SQLite database using the schema above
-- Also write a CSV export for human review of extracted terms
-- Flag terms for review in a separate `review_queue` table or column
-
-### Important Notes on PPTX Bold Detection
-- Bold is stored as `<a:rPr b="1">` in DrawingML XML
-- python-pptx exposes this as `run.font.bold`
-- Bold can be inherited from paragraph or slide master — `run.font.bold` returns `None` if inherited rather than explicit. Treat `None` as not-bold; only capture `True`
-- A single paragraph may contain multiple bold runs (e.g. "Goths", "Huns", "Visigoths" in the same paragraph) — each is captured separately
+### Working rules
+- **Before any write to `owl`:** take a `pg_dump -Fc` into `backups/` and record the `max(id)` high-water mark. Make the script dry-run by default, and get the user's approval before running `--write`.
+- Do not delete or regenerate story packs, edges or enrichment without explicit approval.
+- `data/`, `output/` and `backups/` are gitignored, and the working files of recent sessions live there.
 
 ---
 
-## Phase 2 — Knowledge Graph
+## Design decisions still standing
 
-### Tools
-- **NetworkX** — graph construction, traversal and analysis (user is familiar)
-- **SQLite** — source of truth for nodes and edges
-- Visualisation tool TBD
+### Terms stored exactly as authored
+No normalisation or stemming in `concepts.term`, which preserves the authors' choices.
+**[UNDER REVIEW]** The code also uses this rule for *matching*, so "empire" ≠ "empires", 13 duplicates differ only by case, and truncated terms such as "lexandria" can't be matched. Decided: keep the authored term, and match on a separate key or variant list (see Method).
 
-### Graph Structure
-- **Concept nodes** — abstract term (parent)
-- **Occurrence nodes** — specific location instance (child), with metadata: subject, year, term, unit
-- **Directed edges** — from earlier to later occurrence, human-confirmed
-- **Edge attributes** — edge_type (within/cross subject), edge_nature (reinforcement/extension/application)
+### Human judgement on edges
+Edges carry human-assigned `edge_nature`. **[UNDER REVIEW]** Confirming each edge between individual occurrences does not scale: about 22,500 candidate pairs against 176 confirmed. Decided: model-drafted, human-checked, on consecutive trajectory steps (see Method).
 
-### Key Analytical Questions the Graph Should Answer
-1. Which concepts are load-bearing — appearing most frequently across years and subjects?
-2. Where do cross-subject connections occur?
-3. What is the conceptual trajectory of a specific term across the curriculum?
-4. Are there gaps — concepts introduced but never revisited?
-5. Where does context shift occur — same term doing more sophisticated conceptual work in later years?
+### edge_type and edge_nature (decided 2026-03-01)
+The two are orthogonal. Any nature can pair with any type.
+- `edge_type`, the structural dimension, is auto-detected: `within_subject` | `cross_subject`.
+- `edge_nature`, the pedagogical dimension, is human-assigned:
+  - `reinforcement`: same concept, same kind of work.
+  - `extension`: the concept gains new dimensions. Example: "empire" across the Roman, Islamic and British contexts.
+  - `application`: the concept is used as a schema to understand something new, within or across subjects.
 
----
-
-## Planned Application Stack
-
-The project is built in four layers, all primarily Python:
-
-**1. SQLite** — canonical data store, lives locally alongside the project. Source of truth for all extracted data, confirmed edges and review state. Never replaced or migrated — all other layers read from and write to it.
-
-**2. Python scripts** — extraction pipeline, database writes, NetworkX graph analysis. All local, all in this project directory.
-
-**3. Anvil Uplink** — a persistent Python process running locally that connects the SQLite database to the Anvil web app. The uplink was designed exactly for this pattern: exposing a local data source to a web front end without moving the data or changing the back end. This is the bridge layer — it should not contain business logic, only data access functions.
-
-**4. Anvil web app** — front end for human review workflow and teacher-facing visualisation. Built entirely in Python using the Anvil framework. Anvil DataTables are NOT used as the database — SQLite via the uplink is the data store. Anvil is purely the UI layer.
-
-### Why This Stack
-- Keeps SQLite as the single source of truth — no data duplication or sync problems
-- Entirely Python throughout — consistent with the project owner's skills
-- Anvil uplink was purpose-built for local database access from a web app
-- Separates concerns cleanly: extraction, storage, access, presentation
-
-### Anvil Review Interface — Intended Functionality
-The human review workflow is central to the project's scholarly integrity. The Anvil app should support:
-- Browsing extracted concepts and occurrences by subject, year and term
-- Presenting candidate concept matches across the corpus for edge confirmation
-- Displaying term_in_context for both the from_occurrence and to_occurrence side by side
-- Allowing the reviewer to confirm an edge, assign edge_type and edge_nature, and record their name and date
-- A review queue showing unconfirmed candidate connections
-- Flagged terms awaiting noise review (short words, ambiguous terms)
-
-This interface is particularly important if Christine Counsell or Steve Mastin are involved in reviewing connections — it needs to be usable by curriculum experts, not just technical users.
+### Visualisation
+Force-directed and emergent physics layouts were rejected (Aug 2026): position encodes nothing a teacher can read. Prefer static views where every position carries meaning (`ArchitectureView`, `TimelineView`, `WordAtlasView` in the dashboard).
 
 ---
 
+## Method and intent (decided with the owner, 2026-10-03)
+
+These decisions supersede the February design. Where the system above does not yet match them, they are the target.
+
+### Intent
+- **Primary audience: classroom teachers.** Four use moments, all in scope:
+  - preparing a lesson ("which of these words has my class met before, and where?");
+  - planning a unit or term ("what does this build on and set up?");
+  - getting to know OWL / CPD;
+  - catching up pupils who missed a unit.
+- **No single headline claim.** The map is exploratory. It should show knowledge building over time, cross-subject connections, and load-bearing vs dropped concepts.
+- **"Good enough for teachers" means all three of:**
+  1. accurate per unit: no howlers for someone who knows the unit;
+  2. a handful of flagship trajectories fully judged and well presented;
+  3. endorsed by Christine and Steve.
+
+### Method
+- **Concept = an entry on a unit's core vocab list. Nothing else.** Bold extraction is retired. Rows from bold extraction or with no source need checking against the lists.
+- **Every list entry stays in the map, tagged by type**, e.g. transferable concept / proper noun / unit-specific, so views can filter. `output/transferable_concepts_decisions.csv` is a first pass at this tagging for single-unit terms.
+- **Recurrence = the same concept, in the same sense, from the point of introduction onward.**
+  - Inflections and word-family forms count ("empire" matches "empires"). `concepts.term` stays exactly as authored; matching uses a separate key or variant list.
+  - The sense check applies **only to terms flagged as ambiguous** (e.g. sacked, court, state, temple). Other matches are trusted.
+  - Uses **before** the formal introduction are ignored. "Before" means earlier in curriculum order (year, then term), not just an earlier year. The current gap-fill cut-off is by year only, so it is too loose within a year.
+- **One inclusion rule** for which occurrences count as data, applied identically by every consumer (pipeline, dashboard API, story context). `validation_status = 'confirmed'` is not that rule.
+- **Edge judgement is model-drafted and human-checked.**
+  - A model proposes `edge_nature` from the two contexts.
+  - Hassan checks it.
+  - Christine and Steve sign off a selection, at least the flagship trajectories, before anything reaches teachers.
+  - Judge consecutive steps in a concept's trajectory, not every pair of occurrences. That is about 5,900 steps in total, about 4,300 of them for the 511 concepts spread across 5 or more units, as of 2026-10-03.
+
+### Priority
+Get the core map right ("accurate per unit") before extending enrichment, story packs or CPD integration further. The owner identified scope sprawl and tech churn as past problems.
 
 ---
 
-## Design Decisions
+## Story pack icon hashes
 
-### edge_nature Values (decided 2026-03-01)
-
-`edge_nature` and `edge_type` are fully orthogonal — any nature can pair with any type.
-
-**`edge_type`** — structural dimension (auto-detected from subject match):
-- `within_subject` — both occurrences in the same subject
-- `cross_subject` — occurrences span different subjects
-
-**`edge_nature`** — pedagogical dimension (human-assigned):
-- `reinforcement` — same concept, same kind of work; builds fluency and familiarity
-- `extension` — concept accumulates new dimensions, does more sophisticated work (e.g. "empire" gaining layers across Roman → Mughal → British contexts)
-- `application` — concept deployed as a schema to understand something new; the active, generative use Hirsch's cultural literacy thesis describes
-
-**Why "application" not "cross_subject_application":** The original third value conflated structural information (already captured by `edge_type`) with pedagogical character. `application` can occur within a subject (e.g. "trade" in Mesopotamia applied to medieval trade routes — same subject, new context) as well as across subjects. Dropping the structural qualifier enables the full 3×2 matrix and aligns with Counsell's framing that knowledge does increasingly sophisticated *work*.
-
-| | within_subject | cross_subject |
-|---|---|---|
-| reinforcement | ✓ | ✓ |
-| extension | ✓ | ✓ |
-| application | ✓ | ✓ |
-
-## Future Phases
-
-### Context Analysis
-The `term_in_context` field is captured from the start to enable later semantic analysis:
-- Sentence embeddings to measure context shift between introduction and recurrence
-- Conceptual neighbourhood analysis (what other bold terms cluster around a term at each occurrence)
-- The "empire" example illustrates why this matters: introduced as territory and power, enriched by the concept of an emperor in the Roman/Byzantine context, then deliberately complicated by the Islamic empire which is recognisably an empire but held together by something other than an emperor. That context shift is the most sophisticated pedagogical move in the curriculum and the graph should be able to surface it.
-
-### Phase 3 — Teacher-Facing Visualisation
-The Anvil app, once the review workflow is complete, can be extended to present the knowledge graph in a form accessible to teachers:
-- Visual map of concept trajectories across years and subjects
-- Ability to explore a single concept and trace its journey through the curriculum
-- Cross-subject connection highlighting
-- Potentially a publishable tool that Opening Worlds could offer alongside the booklets
-
-### Phase 4 — Learning Resources
-Development of animated story resources or condensed text summaries derived from the booklets. Requires curriculum expertise in the loop and is dependent on completing the knowledge graph phases first.
-
----
-
-## Page Retrieval Layer (Future Consideration)
-
-### The Idea
-Alongside the knowledge graph, there is value in building a document retrieval layer that stores each booklet page as a retrievable unit, tagged with the same location metadata as the occurrences table (subject, year, term, unit, chapter, page/slide number). This would allow a teacher browsing the visualisation to click on any concept occurrence and see the actual booklet page — layout, images, surrounding narrative — not just the extracted text snippet.
-
-This transforms the tool from a structural map into something closer to a navigable curriculum. The difference between reading "empire is introduced on page 7 of Y4 Spring 2" and actually seeing that page in its original visual context is significant for a teacher trying to understand authorial intent.
-
-### Why Not SQLite
-SQLite is not the right store for this layer. The booklets are image-heavy (68MB+ even compressed). Storing binary content at scale degrades SQLite performance and makes the database unwieldy. The pattern established for source PPTX files applies here too — the database holds metadata and paths, not the binary content itself.
-
-### Two Storage Approaches
-
-**Option A — Rendered page images**
-Split each PDF into per-page PNG or JPEG files at extraction time using `pymupdf` (also called `fitz`). Store images in a predictable folder structure mirroring the existing Dropbox hierarchy. The database holds the file path and location metadata. Simple, fast to implement, works well with Anvil's image display capabilities.
-
-**Option B — Extracted page text with full-text search**
-Use `pymupdf` to extract text from each PDF page with positional data. Store in a document store such as Elasticsearch or PostgreSQL full-text search. Enables keyword search across the full corpus — not just bold terms but any word on any page across all subjects and years. More powerful but significantly more infrastructure.
-
-### Recommended Path
-Option A first — rendered page images with path references in the database. This is buildable without additional infrastructure and delivers immediate value in the Anvil visualisation. Option B is an upgrade path if full-text search across the corpus becomes a requirement.
-
-### Key Library
-**pymupdf** (`fitz`) is the best Python library for PDF work. Handles text extraction, page rendering and image export. Would do the heavy lifting for either option. Install via `pip install pymupdf`.
-
-### Architectural Position
-This is an enrichment layer on top of the core knowledge graph, not part of it. The location metadata already captured in the occurrences table (subject, year, term, unit, chapter, slide_number) is the join key between the graph and the page store. No schema changes are needed — the retrieval layer is additive.
-
-In the Anvil app, the uplink process would handle page retrieval alongside SQLite queries, fetching the relevant image from its stored location and passing it to the front end when a teacher drills into a specific occurrence node.
-
-### When to Build
-Not during the extraction and graph phases — but design for it by ensuring location metadata in the occurrences table is precise enough to uniquely identify a page. That is already the case. Revisit when building the teacher-facing Anvil visualisation.
-
----
-
-## Project Owner
-Hassan Mamdani, COO/CFO, Opening Worlds Ltd  
-This is an internal professional project to make the curriculum's knowledge architecture visible to teachers.
-
-## Curriculum Authors
-Christine Counsell and Steve Mastin, Opening Worlds Ltd  
-© 2021 Christine Counsell and Steve Mastin
-
-## Story Pack Icon Hashes
-
-When running  or , pass all three known
-story icon hashes via  to ensure all story slides are detected:
+When running `src/batch_ingest.py` or `src/content_ingestion.py`, pass all three known story icon
+hashes with `--story-icon-hash` so that all story slides are detected:
 
 ```
 --story-icon-hash ccf3ec0b8550fa9acd31d8d4d5cae37e \
@@ -296,6 +164,12 @@ story icon hashes via  to ensure all story slides are detected:
 --story-icon-hash 48a024b806c0f826053b607fd36475c6
 ```
 
-Identified 2026-04-29. The three icons are visual variants of the same story/narrative
-activity icon used across different units. The first is the most common (original);
-the other two are alternate designs used in some Geography and History units.
+Identified 2026-04-29. They are visual variants of the same story icon.
+
+## Future layers (not built)
+- **Page images:** render booklet pages to images (`pymupdf`), stored on disk with paths in the DB, so an occurrence can show its actual page. `uplink.get_page_image` is a stub.
+- **Context-shift analysis:** sentence embeddings over `term_in_context`, to see when a term does more sophisticated work in later years.
+
+## People
+- **Project owner:** Hassan Mamdani, COO/CFO, Opening Worlds Ltd.
+- **Curriculum authors:** Christine Counsell and Steve Mastin, © 2021.
