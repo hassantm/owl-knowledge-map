@@ -87,7 +87,8 @@ def build_pattern(term: str) -> re.Pattern:
     Build a word-boundary regex for a term.
     Case-insensitive. Handles multi-word terms naturally.
     """
-    escaped = re.escape(term)
+    # straight and curly apostrophes are interchangeable: lists write Qur'an, booklets Qur’an
+    escaped = re.sub(r"\\?['’]", "['’]", re.escape(term))
     return re.compile(r'(?<![a-zA-Z])' + escaped + r'(?![a-zA-Z])', re.IGNORECASE)
 
 
@@ -288,7 +289,7 @@ def run(year: int | None, subject: str | None, unit_filter: str | None, dry_run:
             continue
 
         # Concatenate all page text for a quick pre-filter
-        all_text = ' '.join(p.get('text', '') for p in pages.values()).lower()
+        all_text = ' '.join(p.get('text', '') for p in pages.values()).lower().replace('’', "'")
 
         new_for_unit = 0
         already_for_unit = 0
@@ -302,7 +303,7 @@ def run(year: int | None, subject: str | None, unit_filter: str | None, dry_run:
                 continue
 
             # Quick pre-filter: skip if no form appears anywhere in booklet text
-            forms = [f for f in concept['forms'] if f.lower() in all_text]
+            forms = [f for f in concept['forms'] if f.lower().replace('’', "'") in all_text]
             if not forms:
                 continue
 

@@ -56,7 +56,7 @@ YEAR_GROUP_COOCCURRENCE_SQL = """
     FROM v_occurrences o1
     JOIN v_occurrences o2
         ON  o1.year        = o2.year
-        AND o1.concept_id != o2.concept_id
+        AND o1.concept_id  < o2.concept_id   -- each pair once; subject_a belongs to concept_a
     GROUP BY
         LEAST(o1.concept_id, o2.concept_id),
         GREATEST(o1.concept_id, o2.concept_id),
@@ -121,7 +121,7 @@ def _count_cross_subject(conn) -> int:
 
 def run_computation(dry_run: bool = False, granularities: list[str] = None):
     if granularities is None:
-        granularities = list(TASKS.keys())
+        granularities = ['lesson', 'unit']
 
     conn = get_connection()
 
@@ -147,6 +147,6 @@ if __name__ == "__main__":
     parser.add_argument('--dry-run',       action='store_true')
     parser.add_argument('--granularities', nargs='+',
                         choices=list(TASKS.keys()),
-                        default=list(TASKS.keys()))
+                        default=['lesson', 'unit'])   # year_group is ~2M rows; opt in explicitly
     args = parser.parse_args()
     run_computation(dry_run=args.dry_run, granularities=args.granularities)
