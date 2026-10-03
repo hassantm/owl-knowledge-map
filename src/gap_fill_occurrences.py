@@ -2,14 +2,14 @@
 """
 Gap Fill: Booklet Occurrence Mining
 
-Walks through units in year order (Y3 → Y6), subject by subject.
-For each unit, loads the concepts that already have at least one
-occurrence anywhere in the corpus (i.e. known, validated vocab),
-then searches the unit's booklet_content text for any concept
-that isn't already recorded as occurring in that unit.
+Walks through units in curriculum order. For each unit, loads the concepts
+introduced (on a vocab list) at or before that unit in curriculum order
+(year, then term), and searches the unit's cleaned booklet text for any of
+each concept's approved forms (authored spellings and reviewed inflections)
+where the concept isn't already recorded in that unit.
 
 New occurrences are inserted with:
-  - is_introduction = 0  (not a bold introduction, just a usage)
+  - is_introduction = 0  (a recurrence, not an introduction)
   - vocab_source = 'booklet_gap_fill'
   - chapter derived from the page heading pattern (^N. Title)
 
@@ -156,39 +156,48 @@ def load_units(conn, year: int | None, subject: str | None, unit_filter: str | N
         return [dict(r) for r in cur.fetchall()]
 
 
-def load_concepts_introduced_by_year(conn, year: int) -> list[dict]:
-    """
-    Load all concepts whose FIRST occurrence is in a year <= `year`.
+TERM_ORDER = ['Autumn1', 'Autumn2', 'Spring1', 'Spring2', 'Summer1', 'Summer2']
 
-    A concept is 'introduced' in the earliest year any of its occurrences
-    appears. This means:
-      - Y3 concepts are searched in Y3, Y4, Y5, Y6 booklets  ✓
-      - Y5 concepts are NOT searched in Y3 or Y4 booklets    ✓
+
+def curriculum_pos(year: int, term: str) -> int:
+    """Position in curriculum order (year, then term); same scale as v_occurrences.curriculum_pos."""
+    return year * 10 + TERM_ORDER.index(term) + 1
+
+
+def load_concepts_introduced_by(conn, pos: int) -> list[dict]:
+    """
+    Concepts whose first vocab-list introduction is at or before curriculum position `pos`,
+    with every approved form they are matched by (authored spellings and reviewed inflections).
+
+    Recurrences are only counted from the point of introduction onward, in curriculum
+    order (year, then term), so a Summer 1 term is not searched for in a Spring unit
+    of the same year.
     """
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT c.concept_id, c.term
+            SELECT c.concept_id, c.term,
+                   array_remove(array_agg(DISTINCT f.form), NULL) AS forms
             FROM concepts c
-            JOIN (
-                SELECT concept_id, MIN(u.year) AS first_year
-                FROM occurrences o
-                JOIN units u ON u.unit_id = o.unit_id
-                GROUP BY concept_id
-            ) first ON first.concept_id = c.concept_id
-            WHERE first.first_year <= %s
+            JOIN (SELECT concept_id, min(curriculum_pos) AS first_pos
+                  FROM v_occurrences WHERE is_introduction GROUP BY concept_id) fi
+              ON fi.concept_id = c.concept_id
+            LEFT JOIN concept_forms f
+              ON f.concept_id = c.concept_id AND f.status = 'approved'
+            WHERE c.merged_into IS NULL AND fi.first_pos <= %s
+            GROUP BY c.concept_id, c.term
             ORDER BY c.term
-        """, (year,))
-        return [dict(r) for r in cur.fetchall()]
+        """, (pos,))
+        rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r['forms'] = sorted({r['term'], *r['forms']}, key=len, reverse=True)
+    return rows
 
 
-def load_existing_occurrence_unit_ids(conn, concept_id: int) -> set[int]:
-    """Return the set of unit_ids where this concept already has an occurrence."""
+def load_existing_pairs(conn) -> set[tuple[int, int]]:
+    """All (concept_id, unit_id) pairs that already have an occurrence."""
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT DISTINCT unit_id FROM occurrences WHERE concept_id = %s",
-            (concept_id,)
-        )
-        return {r['unit_id'] for r in cur.fetchall()}
+        cur.execute("SELECT DISTINCT concept_id, unit_id FROM occurrences")
+        return {(r['concept_id'], r['unit_id']) for r in cur.fetchall()}
 
 
 def load_booklet_pages(conn, unit_id: int) -> dict:
@@ -259,17 +268,18 @@ def run(year: int | None, subject: str | None, unit_filter: str | None, dry_run:
     total_new = 0
     total_skipped = 0
 
-    # Cache concepts per year to avoid re-querying on each unit
+    existing = load_existing_pairs(conn)
     concept_cache: dict[int, list[dict]] = {}
 
     for unit in units:
         unit_year = unit['year']
         unit_id = unit['unit_id']
 
-        # Load concepts valid for this year (cached)
-        if unit_year not in concept_cache:
-            concept_cache[unit_year] = load_concepts_introduced_by_year(conn, unit_year)
-        concepts = concept_cache[unit_year]
+        # Concepts introduced at or before this unit in curriculum order (cached per position)
+        pos = curriculum_pos(unit_year, unit['term'])
+        if pos not in concept_cache:
+            concept_cache[pos] = load_concepts_introduced_by(conn, pos)
+        concepts = concept_cache[pos]
 
         # Load booklet pages
         pages = load_booklet_pages(conn, unit_id)
@@ -291,26 +301,27 @@ def run(year: int | None, subject: str | None, unit_filter: str | None, dry_run:
             if not re.search(r'[A-Za-z]', term):
                 continue
 
-            # Quick pre-filter: skip if term not anywhere in booklet text
-            if term.lower() not in all_text:
+            # Quick pre-filter: skip if no form appears anywhere in booklet text
+            forms = [f for f in concept['forms'] if f.lower() in all_text]
+            if not forms:
                 continue
 
             # Check if this unit already has an occurrence for this concept
-            existing_units = load_existing_occurrence_unit_ids(conn, concept_id)
-            if unit_id in existing_units:
+            if (concept_id, unit_id) in existing:
                 already_for_unit += 1
                 continue
 
-            # Find actual matches with page/chapter context
-            matches = find_term_in_pages(term, pages)
+            # Find matches for every form, with page/chapter context; keep the earliest page
+            matches = [m for f in forms for m in find_term_in_pages(f, pages)]
             if not matches:
                 continue
 
             # Insert only the first match per unit (avoid duplicate rows for same unit)
-            match = matches[0]
+            match = min(matches, key=lambda m: m['page'])
 
             inserted = insert_occurrence(conn, concept_id, unit, match, dry_run)
             if inserted:
+                existing.add((concept_id, unit_id))
                 new_for_unit += 1
                 if dry_run:
                     print(f"    [NEW] '{term}' — page {match['page']}, chapter: {match['chapter']}")
