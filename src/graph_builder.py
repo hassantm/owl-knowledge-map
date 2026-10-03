@@ -87,9 +87,8 @@ def build_graph(conn_string: str = PG_CONN_STRING) -> nx.DiGraph:
                        o.subject, o.year, o.term AS term_period,
                        o.unit, o.chapter, o.slide_number,
                        o.is_introduction, o.term_in_context
-                FROM occurrences o
+                FROM v_occurrences o
                 JOIN concepts c ON o.concept_id = c.concept_id
-                WHERE o.validation_status = 'confirmed'
                 ORDER BY o.year, o.term, o.slide_number
             """)
             for row in cursor.fetchall():
@@ -160,9 +159,8 @@ def get_candidate_edges(conn_string: str = PG_CONN_STRING) -> list[dict]:
                 SELECT o.occurrence_id, o.concept_id, c.term AS concept_term,
                        o.subject, o.year, o.term AS term_period,
                        o.unit, o.chapter, o.slide_number
-                FROM occurrences o
+                FROM v_occurrences o
                 JOIN concepts c ON o.concept_id = c.concept_id
-                WHERE o.validation_status = 'confirmed'
                 ORDER BY o.concept_id, o.year, o.term, o.slide_number, o.occurrence_id
             """)
             rows = [dict(r) for r in cursor.fetchall()]

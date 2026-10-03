@@ -116,7 +116,7 @@ def get_vocabulary_with_prior_context(unit_id: int, year: int) -> list[dict]:
                         c.word_family,
                         c.tier
                     FROM concepts c
-                    JOIN occurrences o ON o.concept_id = c.concept_id
+                    JOIN v_occurrences o ON o.concept_id = c.concept_id
                     WHERE o.unit_id = %s
                       AND c.enrichment_status = 'approved'
                 ),
@@ -127,7 +127,7 @@ def get_vocabulary_with_prior_context(unit_id: int, year: int) -> list[dict]:
                         o.term            AS curriculum_term,
                         o.unit            AS unit_name,
                         o.subject
-                    FROM occurrences o
+                    FROM v_occurrences o
                     JOIN current_unit_concepts cuc ON cuc.concept_id = o.concept_id
                     WHERE o.year <= %s
                       AND o.unit_id != %s

@@ -11,8 +11,8 @@ LESSON_COOCCURRENCE_SQL = """
         o2.subject                             AS subject_b,
         'lesson'                               AS granularity,
         COUNT(*)                               AS weight
-    FROM occurrences o1
-    JOIN occurrences o2
+    FROM v_occurrences o1
+    JOIN v_occurrences o2
         ON  o1.slide_number = o2.slide_number
         AND o1.unit         = o2.unit
         AND o1.concept_id   < o2.concept_id
@@ -32,8 +32,8 @@ UNIT_COOCCURRENCE_SQL = """
         o2.subject                                  AS subject_b,
         'unit'                                      AS granularity,
         COUNT(DISTINCT o1.unit)                     AS weight
-    FROM occurrences o1
-    JOIN occurrences o2
+    FROM v_occurrences o1
+    JOIN v_occurrences o2
         ON  o1.unit        = o2.unit
         AND o1.subject     = o2.subject
         AND o1.concept_id != o2.concept_id
@@ -53,8 +53,8 @@ YEAR_GROUP_COOCCURRENCE_SQL = """
         o2.subject                                  AS subject_b,
         'year_group'                                AS granularity,
         COUNT(DISTINCT o1.year)                     AS weight
-    FROM occurrences o1
-    JOIN occurrences o2
+    FROM v_occurrences o1
+    JOIN v_occurrences o2
         ON  o1.year        = o2.year
         AND o1.concept_id != o2.concept_id
     GROUP BY
