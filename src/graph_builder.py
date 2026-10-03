@@ -71,7 +71,7 @@ def build_graph(conn_string: str = PG_CONN_STRING) -> nx.DiGraph:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             # Concept nodes
-            cursor.execute("SELECT concept_id, term, subject_area FROM concepts")
+            cursor.execute("SELECT concept_id, term, subject_area FROM concepts WHERE merged_into IS NULL")
             for row in cursor.fetchall():
                 G.add_node(
                     f"concept_{row['concept_id']}",
