@@ -34,6 +34,31 @@ from db import get_connection  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
+# Page text cleaning
+# ---------------------------------------------------------------------------
+# Booklet text includes picture credits, URLs and pronunciation guides, which
+# produce false matches ("imperial" in "Imperial War Museums", "pub" in
+# "(re-pub-lick)"). Credit lines are dropped whole; URLs and pronunciation
+# guides are removed from the remaining lines. Reviewed 2026-10-02/03, see
+# docs/20261002_recurrence_gap_fill_session.md.
+
+CREDIT_LINE_RE = re.compile(
+    r'CC[ -]BY|creative commons|wikimedia|commons\.|own work|public domain|curid'
+    r'|©|unsplash|flickr|pixabay|shutterstock|alamy|getty|picture credit'
+    r'|photo(?:graph)? by|image by|courtesy of|\.(?:jpe?g|png)\b|indebted to',
+    re.IGNORECASE,
+)
+URL_RE = re.compile(r'(?:https?://|www\.)\S+|\S+\.(?:com|co\.uk|org|net|de|br|html?)(?:/\S*)?', re.IGNORECASE)
+PRONUNCIATION_RE = re.compile(r"\((?=[^)]*-)[a-z’'\- ]+\)")
+
+
+def clean_page_text(text: str) -> str:
+    """Remove credit lines, URLs and pronunciation guides from booklet page text."""
+    kept = [line for line in text.splitlines() if not CREDIT_LINE_RE.search(line)]
+    return PRONUNCIATION_RE.sub(' ', URL_RE.sub(' ', '\n'.join(kept)))
+
+
+# ---------------------------------------------------------------------------
 # Chapter detection
 # ---------------------------------------------------------------------------
 
@@ -176,7 +201,8 @@ def load_booklet_pages(conn, unit_id: int) -> dict:
         row = cur.fetchone()
     if not row or not row['pages']:
         return {}
-    return row['pages']
+    return {k: {**v, 'text': clean_page_text(v.get('text') or '')}
+            for k, v in row['pages'].items()}
 
 
 def insert_occurrence(conn, concept_id: int, unit: dict, match: dict, dry_run: bool) -> bool:
@@ -260,6 +286,10 @@ def run(year: int | None, subject: str | None, unit_filter: str | None, dry_run:
         for concept in concepts:
             concept_id = concept['concept_id']
             term = concept['term']
+
+            # Skip junk concepts with no letters (e.g. '–'), which match every dash
+            if not re.search(r'[A-Za-z]', term):
+                continue
 
             # Quick pre-filter: skip if term not anywhere in booklet text
             if term.lower() not in all_text:
