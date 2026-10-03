@@ -19,8 +19,9 @@ LISTS_DIR = Path('data/phase2/lists')
 
 
 def norm(term: str) -> str:
-    """Lower-case, straight apostrophes, single spaces."""
-    return ' '.join(term.replace('’', "'").split()).lower()
+    """Lower-case, straight apostrophes, single spaces, no space after a hyphen ('al- rahman'),
+    no trailing punctuation ('tropical storm.')."""
+    return re.sub(r'-\s+', '-', ' '.join(term.replace('’', "'").split())).lower().rstrip('.,;:?!')
 
 
 def base_key(term: str) -> str:
@@ -80,11 +81,40 @@ class ConceptIndex:
             self.by_key.setdefault(base_key(form), cid)
 
     def resolve(self, entry: str):
-        """(concept_id or None, how) where how is 'exact', 'base form' or 'none'."""
+        """(concept_id or None, how): 'exact', 'base form', 'variant' (article, hyphen or
+        bracketed abbreviation differs, e.g. 'a hive of activity', 'by-product', 'UNHCR') or 'none'."""
         cid = self.by_norm.get(norm(entry))
         if cid:
             return cid, 'exact'
         cid = self.by_key.get(base_key(entry))
         if cid:
             return cid, 'base form'
+        for v in variants(entry):
+            cid = self.by_norm.get(norm(v)) or self.by_key.get(base_key(v))
+            if cid:
+                return cid, 'variant'
+        if not hasattr(self, 'by_variant'):
+            self.by_variant = {}
+            for cid_, t in sorted(self.terms.items()):
+                for v in variants(t):
+                    self.by_variant.setdefault(base_key(v), cid_)
+        for v in [entry, *variants(entry)]:
+            cid = self.by_variant.get(base_key(v))
+            if cid:
+                return cid, 'variant'
         return None, 'none'
+
+
+def variants(term: str) -> list[str]:
+    """Spelling variants an entry may differ by: leading article, hyphen, bracketed abbreviation."""
+    out = []
+    t = re.sub(r'\s*\([^)]*\)\s*$', '', term).strip()          # 'UN High Commission (UNHCR)'
+    if t != term:
+        out.append(t)
+    for x in [term, t]:
+        s = re.sub(r'^(a|an|the)\s+', '', x, flags=re.I)          # 'a hive of activity', 'the Blitz'
+        if s != x:
+            out.append(s)
+        if '-' in x:
+            out += [x.replace('-', ''), x.replace('-', ' ')]        # 'by-product'
+    return [o for o in dict.fromkeys(out) if o]
