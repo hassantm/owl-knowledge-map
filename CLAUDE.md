@@ -3,7 +3,7 @@
 > **Status of this file (2026-10-03):** rewritten to describe the system as it actually is.
 > The previous version described the February 2026 SQLite/Anvil design and is in git history.
 > Method and intent were re-decided with the owner on 2026-10-03 (see "Method and intent").
-> Phases 1–3 of the method reset are applied; Phases 4–5 are next (see the plan doc).
+> Phases 1–4 of the method reset are applied; Phase 5 (trajectory review) is next (see the plan doc).
 
 ## Overview
 
@@ -38,7 +38,7 @@ A plan to consolidate the first three into one repo is in `docs/20260831_owl_con
 - Never print `.env` contents. It holds `ANTHROPIC_API_KEY`.
 - Schema `public` belongs to the knowledge map. Schema `cpd` belongs to the CPD platform, and `cpd.units` is unrelated to `public.units`. Always qualify table names when in doubt.
 - **SQLite (`db/owl_knowledge_map.db`) is legacy.** It was migrated to Postgres on 2026-03-14 and is no longer the source of truth.
-- **Schema is defined by** `src/build_db_postgres.sql`, then migrations `001`–`009`, applied by hand. There is no migration runner or version table. The `geo_scope` columns come from `owl-geo-scope/01_migrate_schema.sql`.
+- **Schema is defined by** `src/build_db_postgres.sql`, then migrations `001`–`010`, applied by hand. There is no migration runner or version table. The `geo_scope` columns come from `owl-geo-scope/01_migrate_schema.sql`.
 
 #### Tables (`public`)
 | Table | Rows (2026-10-03, after Phase 3) | Notes |
@@ -56,6 +56,8 @@ A plan to consolidate the first three into one repo is in `docs/20260831_owl_con
 - `occurrences.term` is the **term period** (Autumn1…Summer2), not the word. The word is in `concepts.term`; the exact list wording in `occurrences.authored_term`.
 - In `v_occurrences`, `is_introduction` is boolean and derived from `vocab_source` (list file = introduction). The raw `occurrences.is_introduction` INTEGER is kept consistent by the alignment script but is not authoritative. The dashboard casts the view's boolean back to 0/1 for the frontend.
 - `vocab_source`: the current list file name (introductions), `'booklet_gap_fill'` (recurrences), or `'list_removed'` (edge-referenced row demoted to a recurrence).
+- `concepts.concept_type` (transferable / proper_noun / unit_specific), `concept_category` and `concept_type_note` are the Phase 4 tags; transferable includes disciplinary TECHNICAL concepts. Tags describe the kind of word, never its spread.
+- `concepts.is_ambiguous` marks polysemous concepts; `occurrences.sense_check` (same / different / unclear) records their recurrences' sense check. `different` rows are excluded by `v_occurrences` but kept.
 - `validation_status` is a dead column from the February audit. Nothing reads it any more; do not reintroduce it as a filter.
 - `term_in_context` is a full paragraph for older list-sourced rows and a ±60-character snippet for gap-fill and newly added rows.
 
@@ -74,6 +76,7 @@ A plan to consolidate the first three into one repo is in `docs/20260831_owl_con
 - `src/phase2_concept_hygiene.py`: the one-off 2026-10-03 cleanup (already applied; kept for the record and as the home of shared write helpers).
 - `src/generate_inflections.py`: stage lemminflect forms for review (`data/phase2/inflection_review.csv`), `--load` records decisions in `concept_forms`.
 - `src/gap_fill_occurrences.py`: mines cleaned booklet text (credits, URLs, pronunciation guides stripped) for recurrences, matching every approved form, only at or after each concept's first introduction in curriculum order. Idempotent.
+- `src/load_phase4.py`: loads reviewed tags, ambiguous flags and sense checks from `data/phase4/` (dry run by default).
 - `src/prune_occurrences.py`: deletes rows outside the inclusion rule (never edge-referenced ones). Run after list or form changes, before gap-fill.
 - `enrichment/enrich.py`, `review.py`, `compute_cooccurrences.py` (default lesson + unit). Run them from inside `enrichment/`.
 - `src/story_context.py`, `story_generator.py`, `story_qa.py`, `batch_generate.py`.
@@ -94,7 +97,7 @@ A plan to consolidate the first three into one repo is in `docs/20260831_owl_con
 - `story_context.py` treats later units in the same year as "prior" knowledge (`year <= year`); use `curriculum_pos`.
 - `compute_cooccurrences.py` truncates and commits before recomputing; take a backup first.
 - `occurrences` has no unique constraint. Gap-fill and the alignment dedupe in code.
-- Polysemous concepts (bank, fast, source, lock, court, state, order, spring, mine, …) are matched without a sense check until Phase 4.
+- New recurrences of ambiguous concepts (`is_ambiguous`) from a future gap-fill run arrive with `sense_check` NULL and count until checked; sense-check them before relying on the numbers.
 - Tests (`tests/`, 97) cover only enrichment and co-occurrences, against inlined schema copies. They drop tables in `TEST_DATABASE_URL`, so never point that at `owl`.
 - `requirements.txt` is incomplete. It is missing `psycopg2-binary`, `python-dotenv`, `anthropic`, `lemminflect`, `python-pptx` and `pytest`.
 

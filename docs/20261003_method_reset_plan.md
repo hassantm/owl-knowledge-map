@@ -1,7 +1,7 @@
 # Plan: reset the knowledge-map method and rebuild the core map
 
 **Date:** 2026-10-03
-**Status:** Phases 1–3 applied 2026-10-03 (see §6). Phases 4–5 next.
+**Status:** Phases 1–4 applied 2026-10-03/04 (see §6, §7). Phase 5 next.
 **Related:** [recurrence gap-fill session](20261002_recurrence_gap_fill_session.md) · [consolidation plan](20260831_owl_consolidation_plan.md) · [ingest matcher fix plan](20260830_ingest_matcher_fix_plan.md) · `CLAUDE.md` ("Method and intent")
 
 ---
@@ -155,3 +155,29 @@ Each phase has a gate. Every phase that writes to the database follows the worki
 3. **More Hindu Stories:** the Dec 2023 slide version appears to lack "Mahabharata" and "versions" (possibly inside an image). Are they still on the list?
 4. **Islam Arabia** and **Life and Teaching of Jesus:** the only list files sit in "prep" folders; **Agriculture's** only in "older". Are these the current lists?
 5. **Typos in lists:** "Gaugalmela", "unleavened bred", "veni, vedi, vici" (kept as authored; matched by the correct spelling too).
+
+## 7. Phase 4 (2026-10-04): done
+
+**Concept-type tags.** All 2,823 concepts in the map are tagged (migration 010; rubric in `data/phase4/rubric.md`, gitignored).
+- Policy decisions by the owner:
+  - **Subject-technical concepts are transferable** (TECHNICAL): spur, headland, push factors, senate, burh. They are the subject's own concepts and should recur.
+  - **Recurring buildings and places of worship are transferable** (temple, church, synagogue, fort).
+  - **Titles and roles are transferable** (pharaoh, caliph, guru, Prophet).
+  - **Named sacred texts are proper nouns** (Torah, Qur'an, Hadith).
+  - **Tags describe the kind of word, never its spread.** A transferable word used once is a reinforcement gap, not a unit-specific word.
+- Result: **1,935 transferable, 529 proper nouns, 359 unit-specific.** 63 low-confidence tags are marked "LOW CONFIDENCE" in `concepts.concept_type_note`.
+- Drafted by Sonnet agents; validated and spot-checked by the orchestrator.
+- The 1,344 tags carried from the 2026-10-03 filter were re-judged under the new rules; that filter had been judged by Claude agents, not by the owner.
+
+**Sense checks.**
+- 164 concepts flagged ambiguous (`concepts.is_ambiguous`).
+- All 966 of their recurrences checked: **531 same sense, 435 different** (e.g. "in order to", "United Kingdom", "primary school", "plague struck", "Mary and Joseph").
+- A different-sense recurrence keeps its row but drops out of `v_occurrences` (`occurrences.sense_check = 'different'`). The map now has **8,635 occurrences**.
+- Opus spot-check: 48/50 "different" and 20/20 "same" calls correct. The orchestrator overrode 11 related-sense calls to "same": water/nutrient cycle, air-raid and hurricane shelters, the Church as institution, religious sacrifice in an extended sense.
+
+**Reinforcement gaps.** 880 transferable concepts occur in only one unit (`output/reinforcement_gaps.csv`): Geography 255, History 324, Religion 301.
+- Gaps concentrate in Y5–Y6 partly because late concepts have little curriculum left in which to recur.
+- **The 97 Y3 gaps are the most telling.** Geography's 92 TECHNICAL gaps include "spurs".
+- **This list is for review with Christine and Steve.**
+
+**Not yet done:** the dashboard does not expose `concept_type` or the gap list; the 51 concepts added on 2026-10-03 are still enrichment `pending`.
