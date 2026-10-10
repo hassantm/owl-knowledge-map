@@ -54,3 +54,4 @@ data/
 .RData
 ._.DS_Store
 ._*
+.env.tunnel

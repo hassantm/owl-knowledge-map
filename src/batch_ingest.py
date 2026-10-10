@@ -52,35 +52,68 @@ _UNIT_FOLDER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Fallback for Religion folders with no subject word: "Y6 Autumn 1 Sikhism 1 The teaching of the gurus"
+_UNIT_FOLDER_RE_NO_SUBJ = re.compile(
+    r"^Y(\d+)\s+(Autumn|Spring|Summer)\s+(\d+)\s+(.+)$",
+    re.IGNORECASE,
+)
 
-def parse_unit_folder(name: str) -> dict | None:
+
+def parse_unit_folder(name: str, inferred_subject: str | None = None) -> dict | None:
     """Parse a unit folder name into metadata, or return None if it doesn't match."""
     m = _UNIT_FOLDER_RE.match(name.strip())
-    if not m:
-        return None
-    year, subj_abbr, term_word, term_num, unit_name = m.groups()
-    return {
-        "year":    int(year),
-        "subject": SUBJECT_MAP.get(subj_abbr.lower(), subj_abbr),
-        "term":    f"{term_word.capitalize()}{term_num}",
-        "unit":    unit_name.strip(),
-    }
+    if m:
+        year, subj_abbr, term_word, term_num, unit_name = m.groups()
+        return {
+            "year":    int(year),
+            "subject": SUBJECT_MAP.get(subj_abbr.lower(), subj_abbr),
+            "term":    f"{term_word.capitalize()}{term_num}",
+            "unit":    unit_name.strip(),
+        }
+    # Fallback: no subject word in folder name — use inferred_subject if provided
+    m2 = _UNIT_FOLDER_RE_NO_SUBJ.match(name.strip())
+    if m2 and inferred_subject:
+        year, term_word, term_num, unit_name = m2.groups()
+        return {
+            "year":    int(year),
+            "subject": inferred_subject,
+            "term":    f"{term_word.capitalize()}{term_num}",
+            "unit":    unit_name.strip(),
+        }
+    return None
 
 
 def lookup_unit_id(meta: dict) -> int | None:
-    """Look up unit_id in the database for parsed folder metadata."""
+    """Look up unit_id in the database for parsed folder metadata.
+
+    Tries exact match first, then falls back to checking whether the DB unit name
+    is contained within the folder-parsed unit name (handles cases like
+    'Sikhism 1 The teaching of the gurus' matching DB entry 'The teaching of the gurus').
+    """
     conn = get_connection()
     try:
         with conn.cursor() as cur:
+            # Exact match
             cur.execute("""
-                SELECT unit_id FROM units
+                SELECT unit_id, unit FROM units
                 WHERE year = %s AND subject = %s AND term = %s
                   AND unit ILIKE %s
             """, (meta["year"], meta["subject"], meta["term"], meta["unit"]))
             row = cur.fetchone()
+            if row:
+                return row["unit_id"]
+            # Fallback: DB unit name is a substring of the parsed folder name
+            cur.execute("""
+                SELECT unit_id, unit FROM units
+                WHERE year = %s AND subject = %s AND term = %s
+            """, (meta["year"], meta["subject"], meta["term"]))
+            candidates = cur.fetchall()
+            for candidate in candidates:
+                if candidate["unit"].lower() in meta["unit"].lower():
+                    return candidate["unit_id"]
     finally:
         conn.close()
-    return row["unit_id"] if row else None
+    return None
 
 
 def is_already_ingested(unit_id: int) -> tuple[bool, bool]:
@@ -102,12 +135,25 @@ def is_already_ingested(unit_id: int) -> tuple[bool, bool]:
     return row["has_lesson"], row["has_booklet"]
 
 
-def find_unit_folders(dropbox_root: Path) -> list[Path]:
-    """Walk the dropbox root and return all folders matching the unit name pattern."""
-    return [
-        p for p in dropbox_root.rglob("*")
-        if p.is_dir() and parse_unit_folder(p.name)
-    ]
+def infer_subject_from_path(path: Path) -> str | None:
+    """Infer subject from any part of the folder path (e.g. 'HEP Religion' → 'Religion')."""
+    for part in path.parts:
+        for key, subj in SUBJECT_MAP.items():
+            if key in part.lower():
+                return subj
+    return None
+
+
+def find_unit_folders(dropbox_root: Path) -> list[tuple[Path, str | None]]:
+    """Walk the dropbox root and return (folder, inferred_subject) pairs matching the unit name pattern."""
+    results = []
+    for p in dropbox_root.rglob("*"):
+        if not p.is_dir():
+            continue
+        inferred = infer_subject_from_path(p)
+        if parse_unit_folder(p.name, inferred):
+            results.append((p, inferred))
+    return results
 
 
 def find_booklet(unit_dir: Path) -> Path | None:
@@ -123,12 +169,12 @@ def find_booklet(unit_dir: Path) -> Path | None:
 
 
 def find_lesson_dir(unit_dir: Path) -> Path | None:
-    """Find the Powerpoints subfolder containing the lesson PPTXs."""
+    """Find the Powerpoints or Lessons subfolder containing the lesson PPTXs."""
     matches = [
         p for p in unit_dir.iterdir()
-        if p.is_dir() and "powerpoint" in p.name.lower()
+        if p.is_dir() and ("powerpoint" in p.name.lower() or "lesson" in p.name.lower())
     ]
-    return matches[0] if len(matches) == 1 else None
+    return matches[0] if len(matches) >= 1 else None
 
 
 def ingest_unit(unit_dir: Path, unit_id: int, meta: dict, model: str,
@@ -210,16 +256,16 @@ def main():
         return 1
 
     if args.unit:
-        unit_folders = [f for f in unit_folders if args.unit.lower() in f.name.lower()]
+        unit_folders = [(f, s) for f, s in unit_folders if args.unit.lower() in f.name.lower()]
 
-    unit_folders.sort(key=lambda p: p.name)
+    unit_folders.sort(key=lambda t: t[0].name)
     print(f"Found {len(unit_folders)} unit folder(s)\n")
 
     icon_hashes = set(args.story_icon_hashes) if args.story_icon_hashes else None
     ok, skipped, failed, unmatched = [], [], [], []
 
-    for unit_dir in unit_folders:
-        meta = parse_unit_folder(unit_dir.name)
+    for unit_dir, inferred_subject in unit_folders:
+        meta = parse_unit_folder(unit_dir.name, inferred_subject)
         unit_id = lookup_unit_id(meta)
 
         if unit_id is None:

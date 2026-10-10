@@ -3,3 +3,6 @@ python-pptx
 python-docx
 anvil-uplink
 plotly
+anthropic 
+python-dotenv 
+psycopg2-binary
